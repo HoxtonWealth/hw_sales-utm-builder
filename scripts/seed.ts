@@ -1,3 +1,6 @@
+import { config } from "dotenv";
+config({ path: ".env.local" });
+
 import { saveReps, saveDefaultScId } from "../src/lib/kv";
 import { Rep } from "../src/lib/types";
 
