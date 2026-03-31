@@ -1,101 +1,269 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useState, useEffect, useRef } from "react";
+import { Rep } from "@/lib/types";
+
+export default function BuilderPage() {
+  const [reps, setReps] = useState<Rep[]>([]);
+  const [defaultScId, setDefaultScId] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  const [url, setUrl] = useState("");
+  const [selectedRep, setSelectedRep] = useState<Rep | null>(null);
+  const [channel, setChannel] = useState<"linkedin" | "email">("linkedin");
+
+  const [copied, setCopied] = useState(false);
+  const [urlError, setUrlError] = useState("");
+
+  // Combobox state
+  const [search, setSearch] = useState("");
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const comboRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/reps").then((r) => r.json()),
+      fetch("/api/settings").then((r) => r.json()),
+    ]).then(([repsData, settingsData]) => {
+      setReps(repsData);
+      setDefaultScId(settingsData.value);
+      setLoading(false);
+    });
+  }, []);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (comboRef.current && !comboRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const filteredReps = reps.filter((r) =>
+    r.name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  function isValidUrl(str: string): boolean {
+    try {
+      const u = new URL(str);
+      return u.protocol === "http:" || u.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }
+
+  function extractSlug(rawUrl: string): string {
+    try {
+      const u = new URL(rawUrl);
+      const path = u.pathname.replace(/\/+$/, "");
+      if (!path || path === "/") return "home";
+      const segments = path.split("/").filter(Boolean);
+      return segments[segments.length - 1] || "home";
+    } catch {
+      return "home";
+    }
+  }
+
+  function slugifyName(name: string): string {
+    return name.toLowerCase().replace(/\s+/g, "-");
+  }
+
+  function generateUtmUrl(): string | null {
+    if (!url || !selectedRep || !isValidUrl(url)) return null;
+
+    const utmSource = channel;
+    const utmMedium = channel === "linkedin" ? "social" : "email";
+    const utmCampaign = slugifyName(selectedRep.name);
+    const utmContent = extractSlug(url);
+    const scId = selectedRep.sc_id ?? defaultScId;
+
+    const cleanUrl = url.replace(/\/+$/, "");
+    const separator = cleanUrl.includes("?") ? "&" : "?";
+
+    return `${cleanUrl}${separator}utm_source=${utmSource}&utm_medium=${utmMedium}&utm_campaign=${utmCampaign}&utm_content=${utmContent}&sc_id=${scId}`;
+  }
+
+  function handleUrlChange(val: string) {
+    setUrl(val);
+    if (val && !isValidUrl(val)) {
+      setUrlError("Please enter a valid URL (starting with http:// or https://)");
+    } else {
+      setUrlError("");
+    }
+  }
+
+  function handleCopy() {
+    const utmUrl = generateUtmUrl();
+    if (!utmUrl) return;
+    navigator.clipboard.writeText(utmUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  const utmUrl = generateUtmUrl();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-gray-400">Loading...</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+    <div className="min-h-screen bg-gray-50 px-4 pt-8 pb-16">
+      <div className="mx-auto max-w-[520px]">
+        <h1 className="text-2xl font-semibold text-gray-900">UTM link builder</h1>
+        <p className="mt-1 text-sm text-gray-500">
+          Generate tracked links for your outreach
+        </p>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
+        {reps.length === 0 ? (
+          <div className="mt-6 rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-gray-500">
+            No reps configured yet. Ask your admin to add them.
+          </div>
+        ) : (
+          <div className="mt-6 rounded-lg border border-gray-200 bg-white p-5">
+            {/* URL Input */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Paste your link
+              </label>
+              <input
+                type="text"
+                value={url}
+                onChange={(e) => handleUrlChange(e.target.value)}
+                placeholder="https://yoursite.com/guides/ai-marketing-101"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              {urlError && (
+                <p className="mt-1 text-xs text-red-500">{urlError}</p>
+              )}
+            </div>
+
+            {/* Name Combobox */}
+            <div className="mt-4" ref={comboRef}>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Your name
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={selectedRep && !dropdownOpen ? selectedRep.name : search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setSelectedRep(null);
+                    setDropdownOpen(true);
+                  }}
+                  onFocus={() => setDropdownOpen(true)}
+                  placeholder="Start typing your name..."
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                {dropdownOpen && (
+                  <div className="absolute z-10 mt-1 w-full rounded-md border border-gray-200 bg-white shadow-lg max-h-[220px] overflow-y-auto">
+                    {filteredReps.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-gray-400">
+                        No matches
+                      </div>
+                    ) : (
+                      filteredReps.map((rep) => (
+                        <button
+                          key={rep.name}
+                          type="button"
+                          onClick={() => {
+                            setSelectedRep(rep);
+                            setSearch(rep.name);
+                            setDropdownOpen(false);
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 focus:bg-blue-50 focus:outline-none"
+                        >
+                          {rep.name}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Channel Toggle */}
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Channel
+              </label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setChannel("linkedin")}
+                  className={`flex-1 rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
+                    channel === "linkedin"
+                      ? "border-blue-500 bg-blue-50 text-blue-700"
+                      : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  LinkedIn
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChannel("email")}
+                  className={`flex-1 rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
+                    channel === "email"
+                      ? "border-blue-500 bg-blue-50 text-blue-700"
+                      : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  Email
+                </button>
+              </div>
+            </div>
+
+            {/* Generated URL */}
+            {utmUrl && (
+              <div className="mt-5 border-t border-gray-200 pt-5">
+                <p className="text-sm font-medium text-gray-700 mb-2">
+                  Your tracked link
+                </p>
+                <div className="rounded-md bg-gray-50 p-3 text-xs font-mono break-all leading-relaxed">
+                  <HighlightedUrl url={utmUrl} />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  className="mt-3 w-full rounded-md bg-gray-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-800 transition-colors"
+                >
+                  {copied ? "Copied!" : "Copy link"}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="mt-8 text-center">
+          <a href="/admin" className="text-xs text-gray-400 hover:text-gray-600">
+            Admin
           </a>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      </div>
     </div>
+  );
+}
+
+function HighlightedUrl({ url }: { url: string }) {
+  const parts = url.split(/(utm_source=|utm_medium=|utm_campaign=|utm_content=|sc_id=)/g);
+  return (
+    <>
+      {parts.map((part, i) =>
+        /^(utm_source=|utm_medium=|utm_campaign=|utm_content=|sc_id=)$/.test(part) ? (
+          <span key={i} className="text-blue-600 font-semibold">
+            {part}
+          </span>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </>
   );
 }
