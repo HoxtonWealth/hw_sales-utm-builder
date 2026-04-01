@@ -15,6 +15,12 @@ export default function BuilderPage() {
   const [copied, setCopied] = useState(false);
   const [urlError, setUrlError] = useState("");
 
+  // Shorten state
+  const [shortUrl, setShortUrl] = useState<string | null>(null);
+  const [shortening, setShortening] = useState(false);
+  const [shortenError, setShortenError] = useState("");
+  const [shortCopied, setShortCopied] = useState(false);
+
   // Combobox state
   const [search, setSearch] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -88,11 +94,48 @@ export default function BuilderPage() {
 
   function handleUrlChange(val: string) {
     setUrl(val);
+    setShortUrl(null);
+    setShortenError("");
     if (val && !isValidUrl(val)) {
       setUrlError("Please enter a valid URL (starting with http:// or https://)");
     } else {
       setUrlError("");
     }
+  }
+
+  async function handleShorten() {
+    const utmUrl = generateUtmUrl();
+    if (!utmUrl) return;
+
+    setShortening(true);
+    setShortenError("");
+
+    try {
+      const res = await fetch("/api/shorten", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: utmUrl }),
+      });
+
+      if (!res.ok) {
+        setShortenError("Could not shorten URL, please try again");
+        return;
+      }
+
+      const data = await res.json();
+      setShortUrl(data.shortUrl);
+    } catch {
+      setShortenError("Could not shorten URL, please try again");
+    } finally {
+      setShortening(false);
+    }
+  }
+
+  function handleCopyShort() {
+    if (!shortUrl) return;
+    navigator.clipboard.writeText(shortUrl);
+    setShortCopied(true);
+    setTimeout(() => setShortCopied(false), 2000);
   }
 
   function handleCopy() {
@@ -157,6 +200,8 @@ export default function BuilderPage() {
                     setSearch(e.target.value);
                     setSelectedRep(null);
                     setDropdownOpen(true);
+                    setShortUrl(null);
+                    setShortenError("");
                   }}
                   onFocus={() => setDropdownOpen(true)}
                   placeholder="Start typing your name..."
@@ -197,7 +242,7 @@ export default function BuilderPage() {
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setChannel("linkedin")}
+                  onClick={() => { setChannel("linkedin"); setShortUrl(null); setShortenError(""); }}
                   className={`flex-1 rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
                     channel === "linkedin"
                       ? "border-blue-500 bg-blue-50 text-blue-700"
@@ -208,7 +253,7 @@ export default function BuilderPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setChannel("email")}
+                  onClick={() => { setChannel("email"); setShortUrl(null); setShortenError(""); }}
                   className={`flex-1 rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
                     channel === "email"
                       ? "border-blue-500 bg-blue-50 text-blue-700"
@@ -236,6 +281,34 @@ export default function BuilderPage() {
                 >
                   {copied ? "Copied!" : "Copy link"}
                 </button>
+
+                {/* Shorten URL */}
+                {shortUrl ? (
+                  <div className="mt-3 flex items-center gap-2">
+                    <div className="flex-1 rounded-md bg-gray-50 px-3 py-2.5 text-sm font-mono text-gray-900 break-all">
+                      {shortUrl}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCopyShort}
+                      className="shrink-0 rounded-md bg-gray-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-800 transition-colors"
+                    >
+                      {shortCopied ? "Copied!" : "Copy"}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleShorten}
+                    disabled={shortening}
+                    className="mt-3 w-full rounded-md border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {shortening ? "Shortening..." : "Create a shortened URL"}
+                  </button>
+                )}
+                {shortenError && (
+                  <p className="mt-2 text-xs text-red-500">{shortenError}</p>
+                )}
               </div>
             )}
           </div>
