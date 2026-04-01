@@ -25,6 +25,7 @@ src/
       auth/route.ts    # POST login, DELETE logout
       reps/route.ts    # GET (public), POST/PUT/DELETE (auth required)
       settings/route.ts # GET (public), PUT (auth required)
+      shorten/route.ts  # POST - shortens a URL via Short.io API
 scripts/
   seed.ts              # Seeds 196 reps into KV (run with `npm run seed`)
 ```
@@ -36,6 +37,8 @@ scripts/
 | `KV_REST_API_URL` | Auto-set by Vercel (Upstash Redis integration) |
 | `KV_REST_API_TOKEN` | Auto-set by Vercel (Upstash Redis integration) |
 | `ADMIN_PASSWORD` | Set manually in Vercel env vars |
+| `SHORT_IO_API_KEY` | Set manually in Vercel env vars |
+| `SHORT_IO_DOMAIN` | Set manually in Vercel env vars |
 
 ## Key Commands
 
@@ -59,3 +62,4 @@ scripts/
 - The KV store name on Vercel is `upstash-kv-amber-bucket`
 - Admin cookie: `admin_session` (httpOnly, secure in prod, sameSite strict, 24h expiry)
 - Rep names are always sorted alphabetically in KV
+- URL shortening uses Short.io API (POST /api/shorten) — no auth required, calls Short.io server-side
