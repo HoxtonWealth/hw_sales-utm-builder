@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/scrape-instagram?secret=${CRON_SECRET}",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/scrape-blog?secret=${CRON_SECRET}",
+      "schedule": "0 7 * * *"
+    }
+  ]
+}
