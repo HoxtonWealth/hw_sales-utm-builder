@@ -15,12 +15,6 @@ export default function BuilderPage() {
   const [copied, setCopied] = useState(false);
   const [urlError, setUrlError] = useState("");
 
-  // Shorten state
-  const [shortUrl, setShortUrl] = useState<string | null>(null);
-  const [shortening, setShortening] = useState(false);
-  const [shortenError, setShortenError] = useState("");
-  const [shortCopied, setShortCopied] = useState(false);
-
   // Combobox state
   const [search, setSearch] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -94,48 +88,11 @@ export default function BuilderPage() {
 
   function handleUrlChange(val: string) {
     setUrl(val);
-    setShortUrl(null);
-    setShortenError("");
     if (val && !isValidUrl(val)) {
       setUrlError("Please enter a valid URL (starting with http:// or https://)");
     } else {
       setUrlError("");
     }
-  }
-
-  async function handleShorten() {
-    const utmUrl = generateUtmUrl();
-    if (!utmUrl) return;
-
-    setShortening(true);
-    setShortenError("");
-
-    try {
-      const res = await fetch("/api/shorten", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: utmUrl }),
-      });
-
-      if (!res.ok) {
-        setShortenError("Could not shorten URL, please try again");
-        return;
-      }
-
-      const data = await res.json();
-      setShortUrl(data.shortUrl);
-    } catch {
-      setShortenError("Could not shorten URL, please try again");
-    } finally {
-      setShortening(false);
-    }
-  }
-
-  function handleCopyShort() {
-    if (!shortUrl) return;
-    navigator.clipboard.writeText(shortUrl);
-    setShortCopied(true);
-    setTimeout(() => setShortCopied(false), 2000);
   }
 
   function handleCopy() {
@@ -200,8 +157,6 @@ export default function BuilderPage() {
                     setSearch(e.target.value);
                     setSelectedRep(null);
                     setDropdownOpen(true);
-                    setShortUrl(null);
-                    setShortenError("");
                   }}
                   onFocus={() => setDropdownOpen(true)}
                   placeholder="Start typing your name..."
@@ -242,7 +197,7 @@ export default function BuilderPage() {
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => { setChannel("linkedin"); setShortUrl(null); setShortenError(""); }}
+                  onClick={() => setChannel("linkedin")}
                   className={`flex-1 rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
                     channel === "linkedin"
                       ? "border-blue-500 bg-blue-50 text-blue-700"
@@ -253,7 +208,7 @@ export default function BuilderPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setChannel("email"); setShortUrl(null); setShortenError(""); }}
+                  onClick={() => setChannel("email")}
                   className={`flex-1 rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
                     channel === "email"
                       ? "border-blue-500 bg-blue-50 text-blue-700"
