@@ -281,34 +281,6 @@ export default function BuilderPage() {
                 >
                   {copied ? "Copied!" : "Copy link"}
                 </button>
-
-                {/* Shorten URL */}
-                {shortUrl ? (
-                  <div className="mt-3 flex items-center gap-2">
-                    <div className="flex-1 rounded-md bg-gray-50 px-3 py-2.5 text-sm font-mono text-gray-900 break-all">
-                      {shortUrl}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleCopyShort}
-                      className="shrink-0 rounded-md bg-gray-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-800 transition-colors"
-                    >
-                      {shortCopied ? "Copied!" : "Copy"}
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleShorten}
-                    disabled={shortening}
-                    className="mt-3 w-full rounded-md border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {shortening ? "Shortening..." : "Create a shortened URL"}
-                  </button>
-                )}
-                {shortenError && (
-                  <p className="mt-2 text-xs text-red-500">{shortenError}</p>
-                )}
               </div>
             )}
           </div>
