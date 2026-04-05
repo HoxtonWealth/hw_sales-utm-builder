@@ -204,6 +204,7 @@ function RepostModal({
   const [aiText, setAiText] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiCopied, setAiCopied] = useState(false);
+  const [captionCopied, setCaptionCopied] = useState(false);
   const comboRef = useRef<HTMLDivElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
 
@@ -360,6 +361,22 @@ function RepostModal({
             >
               <DownloadIcon />
               Download image
+            </button>
+          </div>
+        )}
+
+        {/* Copy caption */}
+        {post.source === "instagram" && post.caption && (
+          <div className="px-5 pt-2">
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(post.caption!);
+                setCaptionCopied(true);
+                setTimeout(() => setCaptionCopied(false), 2000);
+              }}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-stone-300 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50 transition-colors"
+            >
+              {captionCopied ? "Copied!" : "Copy caption"}
             </button>
           </div>
         )}
