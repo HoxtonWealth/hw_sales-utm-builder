@@ -123,19 +123,28 @@ export async function GET(request: NextRequest) {
     results[username] = accountResult;
 
     try {
-      // Probe API to discover endpoints — return in response for debugging
+      // Probe likely endpoints — return status in response for debugging
       const probeResults: Record<string, string> = {};
-      for (const probePath of ["/", "/endpoints", "/api", "/docs"]) {
+      const probePaths = [
+        "/profile-media", "/profile-posts", "/profile-feed",
+        "/user-reels", "/reels", "/explore",
+        "/hashtag", "/search", "/stories",
+        "/user-info", "/user-detail",
+        "/media-by-user", "/feed-by-user",
+      ];
+      for (const probePath of probePaths) {
         try {
-          const probeRes = await fetch(`https://${RAPIDAPI_HOST}${probePath}`, {
+          const probeRes = await fetch(`https://${RAPIDAPI_HOST}${probePath}?username=${username}`, {
             headers: { "x-rapidapi-host": RAPIDAPI_HOST, "x-rapidapi-key": process.env.RAPIDAPI_KEY! },
           });
-          probeResults[probePath] = `${probeRes.status}: ${(await probeRes.text()).slice(0, 300)}`;
+          const body = (await probeRes.text()).slice(0, 200);
+          probeResults[probePath] = `${probeRes.status}: ${body}`;
+          if (probeRes.ok) probeResults[probePath] = `SUCCESS ${probeRes.status}: ${body}`;
         } catch (e) {
-          probeResults[probePath] = `error: ${e instanceof Error ? e.message : "unknown"}`;
+          probeResults[probePath] = `err: ${e instanceof Error ? e.message.slice(0, 100) : "unknown"}`;
         }
       }
-      accountResult.errors.push("API_PROBE: " + JSON.stringify(probeResults));
+      accountResult.errors.push("PROBE: " + JSON.stringify(probeResults));
 
       const userId = await getUserId(username);
 
