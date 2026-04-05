@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAiPrompt } from "@/lib/kv";
 
 export const dynamic = "force-dynamic";
+
+const DEFAULT_SYSTEM_PROMPT =
+  "You are a social media copywriter for Hoxton Wealth, a financial advisory firm. Write engaging, professional content to help sales reps share articles and posts with their network.";
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,6 +17,9 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    const customPrompt = await getAiPrompt();
+    const systemPrompt = customPrompt || DEFAULT_SYSTEM_PROMPT;
 
     const contentDesc =
       source === "blog"
@@ -34,10 +41,11 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
         max_tokens: 512,
+        system: systemPrompt,
         messages: [
           {
             role: "user",
-            content: `You are a social media copywriter for Hoxton Wealth, a financial advisory firm. Generate a repost for the following content.\n\n${contentDesc}\n\n${platformGuide}\n\nReturn ONLY the post text, no quotes or labels.`,
+            content: `Generate a repost for the following content.\n\n${contentDesc}\n\n${platformGuide}\n\nReturn ONLY the post text, no quotes or labels.`,
           },
         ],
       }),

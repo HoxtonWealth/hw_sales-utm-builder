@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDefaultScId, saveDefaultScId } from "@/lib/kv";
+import { getDefaultScId, saveDefaultScId, getAiPrompt, saveAiPrompt } from "@/lib/kv";
 import { isAuthenticated } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const scId = await getDefaultScId();
-    return NextResponse.json({ value: scId });
+    const [scId, aiPrompt] = await Promise.all([
+      getDefaultScId(),
+      getAiPrompt(),
+    ]);
+    return NextResponse.json({ value: scId, aiPrompt });
   } catch {
     return NextResponse.json(
       { error: "Failed to fetch settings" },
@@ -22,16 +25,24 @@ export async function PUT(request: NextRequest) {
   }
 
   try {
-    const { value } = await request.json();
+    const body = await request.json();
 
-    if (!value || typeof value !== "string") {
+    // Support updating default SC_ID
+    if (body.value && typeof body.value === "string") {
+      await saveDefaultScId(body.value);
+    }
+
+    // Support updating AI prompt
+    if (typeof body.aiPrompt === "string") {
+      await saveAiPrompt(body.aiPrompt);
+    }
+
+    if (!body.value && typeof body.aiPrompt !== "string") {
       return NextResponse.json(
-        { error: "Value is required" },
+        { error: "No valid field to update" },
         { status: 400 }
       );
     }
-
-    await saveDefaultScId(value);
 
     return NextResponse.json({ success: true });
   } catch {

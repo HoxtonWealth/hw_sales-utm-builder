@@ -15,6 +15,9 @@ export default function AdminPage() {
   const [scIdInput, setScIdInput] = useState("");
   const [scIdSaved, setScIdSaved] = useState(false);
 
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiPromptSaved, setAiPromptSaved] = useState(false);
+
   const [repSearch, setRepSearch] = useState("");
   const [editingRep, setEditingRep] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
@@ -65,6 +68,7 @@ export default function AdminPage() {
     ]).then(([repsData, settingsData]) => {
       setReps(repsData);
       setScIdInput(settingsData.value);
+      setAiPrompt(settingsData.aiPrompt || "");
       setDataLoading(false);
     });
   }, [loggedIn]);
@@ -77,6 +81,16 @@ export default function AdminPage() {
     });
     setScIdSaved(true);
     setTimeout(() => setScIdSaved(false), 2000);
+  }
+
+  async function saveAiPrompt() {
+    await fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ aiPrompt }),
+    });
+    setAiPromptSaved(true);
+    setTimeout(() => setAiPromptSaved(false), 2000);
   }
 
   async function handleAddRep() {
@@ -210,6 +224,31 @@ export default function AdminPage() {
               <p className="mt-2 text-xs text-gray-400">
                 Applied when a rep has no assigned SC_ID
               </p>
+            </div>
+
+            {/* AI System Prompt */}
+            <div className="mt-4 rounded-lg border border-gray-200 bg-white p-5">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                AI post writer — system prompt
+              </label>
+              <textarea
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                rows={4}
+                placeholder="e.g. You are a social media copywriter for Hoxton Wealth..."
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm leading-relaxed focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y"
+              />
+              <div className="mt-2 flex items-center justify-between">
+                <p className="text-xs text-gray-400">
+                  Sets the tone and persona for AI-generated posts in the Content Hub
+                </p>
+                <button
+                  onClick={saveAiPrompt}
+                  className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 transition-colors"
+                >
+                  {aiPromptSaved ? "Saved!" : "Save"}
+                </button>
+              </div>
             </div>
 
             {/* Sales Reps */}

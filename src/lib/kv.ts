@@ -18,3 +18,12 @@ export async function getDefaultScId(): Promise<string> {
 export async function saveDefaultScId(scId: string): Promise<void> {
   await kv.set("default_sc_id", scId);
 }
+
+export async function getAiPrompt(): Promise<string> {
+  const prompt = await kv.get<string>("ai_prompt");
+  return prompt ?? "";
+}
+
+export async function saveAiPrompt(prompt: string): Promise<void> {
+  await kv.set("ai_prompt", prompt);
+}

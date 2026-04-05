@@ -631,29 +631,13 @@ export default function ContentHubPage() {
                     {formatDate(post.published_at)}
                   </span>
 
-                  <div className="flex gap-1.5">
-                    {post.image_url && (
-                      <button
-                        onClick={() =>
-                          handleDownload(
-                            post.image_url!,
-                            `${post.source}-${post.source_id}`
-                          )
-                        }
-                        className="flex items-center gap-1 rounded-md border border-stone-300 px-2 py-0.5 text-[10px] font-medium text-stone-600 hover:bg-stone-50 transition-colors"
-                      >
-                        <DownloadIcon size={11} />
-                        Download
-                      </button>
-                    )}
-                    <button
-                      onClick={() => setRepostPost(post)}
-                      className="flex items-center gap-1 rounded-md bg-gray-900 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-gray-800 transition-colors"
-                    >
-                      <ShareIcon />
-                      Repost
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => setRepostPost(post)}
+                    className="flex items-center gap-1 rounded-md bg-gray-900 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-gray-800 transition-colors"
+                  >
+                    <ShareIcon />
+                    Repost
+                  </button>
                 </div>
               </div>
             ))}
