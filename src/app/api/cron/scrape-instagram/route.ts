@@ -88,6 +88,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "No IG_ACCOUNTS configured" }, { status: 400 });
   }
 
+  // One-time cleanup: delete Instagram posts with expired CDN URLs (not stored in Supabase Storage)
+  await supabase
+    .from("posts")
+    .delete()
+    .eq("source", "instagram")
+    .like("image_url", "%fbcdn.net%");
+
   const results: Record<string, { added: number; errors: string[]; debug?: string }> = {};
 
   for (const username of accounts) {
@@ -209,6 +216,9 @@ export async function GET(request: NextRequest) {
           let storedImageUrl: string | null = null;
           if (imageUrl) {
             storedImageUrl = await downloadImageToStorage(imageUrl, "instagram", shortcode);
+            if (!storedImageUrl) {
+              console.error(`Failed to store image for ${shortcode}, CDN URL: ${String(imageUrl).slice(0, 100)}`);
+            }
           }
 
           const { error: insertError } = await supabase.from("posts").insert({
@@ -216,7 +226,7 @@ export async function GET(request: NextRequest) {
             source_id: shortcode,
             account: username,
             caption: typeof caption === "string" ? caption.slice(0, 2000) : "",
-            image_url: storedImageUrl || imageUrl || null,
+            image_url: storedImageUrl || null, // Only use Supabase URL, never CDN
             published_at: publishedAt,
             metadata: {
               likes: post?.like_count || item?.like_count || 0,
