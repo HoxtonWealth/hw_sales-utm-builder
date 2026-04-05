@@ -195,7 +195,9 @@ export async function GET(request: NextRequest) {
           ` | item keys: [${keys.slice(0, 15).join(", ")}...]` +
           ` | caption field: ${JSON.stringify(captionField).slice(0, 200)}` +
           ` | display_url: ${first?.display_url ? "YES" : "NO"}` +
-          ` | thumbnail_src: ${first?.thumbnail_src ? "YES" : "NO"}`;
+          ` | thumbnail_src: ${first?.thumbnail_src ? String(first.thumbnail_src).slice(0, 80) : "NO"}` +
+          ` | thumbnail_resources: ${first?.thumbnail_resources ? JSON.stringify(first.thumbnail_resources).slice(0, 150) : "NO"}` +
+          ` | media_preview: ${first?.media_preview ? "YES(" + String(first.media_preview).length + " chars)" : "NO"}`;
       }
 
       // Get existing source_ids to filter duplicates
