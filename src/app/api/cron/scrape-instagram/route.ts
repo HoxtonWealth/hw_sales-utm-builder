@@ -88,12 +88,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "No IG_ACCOUNTS configured" }, { status: 400 });
   }
 
-  // One-time cleanup: delete Instagram posts with expired CDN URLs (not stored in Supabase Storage)
+  // Cleanup: delete Instagram posts with expired CDN URLs or missing images
   await supabase
     .from("posts")
     .delete()
     .eq("source", "instagram")
-    .like("image_url", "%fbcdn.net%");
+    .or("image_url.like.%fbcdn.net%,image_url.is.null");
 
   const results: Record<string, { added: number; errors: string[]; debug?: string }> = {};
 
