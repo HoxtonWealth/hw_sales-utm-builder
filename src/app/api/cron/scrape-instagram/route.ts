@@ -44,8 +44,17 @@ async function downloadImageToStorage(
 ): Promise<string | null> {
   try {
     const supabase = getSupabase();
-    const res = await fetch(imageUrl);
-    if (!res.ok) return null;
+    const res = await fetch(imageUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+        "Referer": "https://www.instagram.com/",
+      },
+    });
+    if (!res.ok) {
+      console.error(`Image fetch failed [${res.status}]: ${imageUrl.slice(0, 100)}`);
+      return null;
+    }
 
     const buffer = Buffer.from(await res.arrayBuffer());
     const contentType = res.headers.get("content-type") || "image/jpeg";
