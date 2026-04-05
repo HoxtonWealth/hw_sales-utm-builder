@@ -37,34 +37,6 @@ async function rapidApiFetch(endpoint: string, params: Record<string, string>) {
   return JSON.parse(text);
 }
 
-async function getUserId(username: string): Promise<string> {
-  const supabase = getSupabase();
-
-  const { data: existing } = await supabase
-    .from("ig_accounts")
-    .select("user_id")
-    .eq("username", username)
-    .single();
-
-  if (existing?.user_id) return existing.user_id;
-
-  // Fetch profile from RapidAPI
-  const profile = await rapidApiFetch("/profile", { username });
-
-  // ADJUST: field name may differ
-  const userId = String(profile?.data?.id || profile?.id || profile?.user?.pk || profile?.pk);
-
-  if (!userId || userId === "undefined") {
-    throw new Error(`Could not resolve user_id for @${username}`);
-  }
-
-  await supabase
-    .from("ig_accounts")
-    .upsert({ username, user_id: userId }, { onConflict: "username" });
-
-  return userId;
-}
-
 async function downloadImageToStorage(
   imageUrl: string,
   folder: string,
@@ -116,85 +88,82 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "No IG_ACCOUNTS configured" }, { status: 400 });
   }
 
-  const results: Record<string, { added: number; errors: string[] }> = {};
+  const results: Record<string, { added: number; errors: string[]; debug?: string }> = {};
 
   for (const username of accounts) {
-    const accountResult = { added: 0, errors: [] as string[] };
+    const accountResult: { added: number; errors: string[]; debug?: string } = { added: 0, errors: [] };
     results[username] = accountResult;
 
     try {
-      // Probe likely endpoints — return status in response for debugging
-      const probeResults: Record<string, string> = {};
-      const probePaths = [
-        "/profile-media", "/profile-posts", "/profile-feed",
-        "/user-reels", "/reels", "/explore",
-        "/hashtag", "/search", "/stories",
-        "/user-info", "/user-detail",
-        "/media-by-user", "/feed-by-user",
-      ];
-      for (const probePath of probePaths) {
-        try {
-          const probeRes = await fetch(`https://${RAPIDAPI_HOST}${probePath}?username=${username}`, {
-            headers: { "x-rapidapi-host": RAPIDAPI_HOST, "x-rapidapi-key": process.env.RAPIDAPI_KEY! },
-          });
-          const body = (await probeRes.text()).slice(0, 200);
-          probeResults[probePath] = `${probeRes.status}: ${body}`;
-          if (probeRes.ok) probeResults[probePath] = `SUCCESS ${probeRes.status}: ${body}`;
-        } catch (e) {
-          probeResults[probePath] = `err: ${e instanceof Error ? e.message.slice(0, 100) : "unknown"}`;
-        }
-      }
-      accountResult.errors.push("PROBE: " + JSON.stringify(probeResults));
+      // Fetch profile — this API embeds recent media in the profile response
+      const profile = await rapidApiFetch("/profile", { username });
 
-      const userId = await getUserId(username);
+      // Log top-level keys for debugging
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const p = profile as Record<string, any>;
+      const topKeys = Object.keys(p);
+      accountResult.debug = `profile keys: [${topKeys.join(", ")}]`;
 
-      // Try multiple endpoint + param combos — RapidAPI Instagram scrapers vary
-      let mediaResponse: Record<string, unknown> | null = null;
-      const mediaAttempts: { ep: string; params: Record<string, string> }[] = [
-        { ep: "/user-medias", params: { user_id: userId } },
-        { ep: "/user-medias", params: { username } },
-        { ep: "/user-posts", params: { user_id: userId } },
-        { ep: "/user-posts", params: { username } },
-        { ep: "/user-feed", params: { user_id: userId } },
-        { ep: "/user-feed", params: { username } },
-        { ep: "/media", params: { user_id: userId } },
-        { ep: "/posts", params: { user_id: userId } },
-        { ep: "/get-user-medias", params: { username } },
-        { ep: "/v1/user-medias", params: { username } },
-      ];
-      const triedEndpoints: string[] = [];
-      for (const { ep, params } of mediaAttempts) {
-        try {
-          triedEndpoints.push(`${ep}(${Object.keys(params).join(",")})`);
-          mediaResponse = await rapidApiFetch(ep, params);
-          console.log(`Instagram: working endpoint = ${ep} with params ${JSON.stringify(params)}`);
-          break;
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : "";
-          console.log(`Instagram: ${ep} failed: ${msg.slice(0, 200)}`);
-          if (msg.includes("404") || msg.includes("does not exist")) continue;
-          throw e;
-        }
+      // Save user_id to ig_accounts if not already cached
+      const userId = String(p?.data?.id || p?.id || p?.user?.pk || p?.pk || "");
+      if (userId && userId !== "undefined") {
+        await supabase
+          .from("ig_accounts")
+          .upsert({ username, user_id: userId }, { onConflict: "username" });
       }
-      if (!mediaResponse) {
-        accountResult.errors.push("No working media endpoint found. Tried: " + triedEndpoints.join(", "));
+
+      // Try to find media items in the profile response
+      // Different IG scraper APIs nest media in various places
+      const mediaItems =
+        p?.data?.edge_owner_to_timeline_media?.edges ||
+        p?.data?.medias ||
+        p?.data?.media?.items ||
+        p?.data?.posts ||
+        p?.data?.items ||
+        p?.edge_owner_to_timeline_media?.edges ||
+        p?.medias ||
+        p?.media?.items ||
+        p?.posts ||
+        p?.items ||
+        p?.user?.edge_owner_to_timeline_media?.edges ||
+        p?.user?.medias ||
+        p?.user?.media?.items ||
+        null;
+
+      if (!mediaItems || !Array.isArray(mediaItems)) {
+        // Dump deeper structure for debugging
+        const dataKeys = p?.data ? Object.keys(p.data) : [];
+        const userKeys = p?.user ? Object.keys(p.user) : [];
+        accountResult.debug += ` | data keys: [${dataKeys.join(", ")}] | user keys: [${userKeys.join(", ")}]`;
+
+        // Try /reels endpoint as fallback (we know it exists)
+        try {
+          const reelsResponse = await rapidApiFetch("/reels", { user_id: userId || username });
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const r = reelsResponse as Record<string, any>;
+          const reelsKeys = Object.keys(r);
+          accountResult.debug += ` | reels keys: [${reelsKeys.join(", ")}]`;
+        } catch (reelsErr) {
+          accountResult.debug += ` | reels err: ${reelsErr instanceof Error ? reelsErr.message.slice(0, 100) : "unknown"}`;
+        }
+
+        accountResult.errors.push("Could not find media items in profile response");
         continue;
       }
-      // ADJUST: field name may differ
-      const items = (mediaResponse?.data as Record<string, unknown>)?.items || mediaResponse?.items || mediaResponse?.data || [];
 
-      if (!Array.isArray(items)) {
-        accountResult.errors.push("Unexpected media response format");
-        continue;
-      }
+      // Normalize items — handle both {node: {...}} (graph API style) and flat items
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const items: Record<string, any>[] = mediaItems.map((item: any) => item?.node || item);
 
       // Get existing source_ids to filter duplicates
       const shortcodes = items
-        .map((item: Record<string, unknown>) =>
-          // ADJUST: field name may differ
-          String(item.code || item.shortcode || "")
-        )
+        .map((item) => String(item.code || item.shortcode || ""))
         .filter(Boolean);
+
+      if (shortcodes.length === 0) {
+        accountResult.errors.push("No shortcodes found in media items");
+        continue;
+      }
 
       const { data: existing } = await supabase
         .from("posts")
@@ -205,43 +174,34 @@ export async function GET(request: NextRequest) {
       const existingIds = new Set((existing ?? []).map((e) => e.source_id));
 
       for (const item of items) {
-        // ADJUST: field name may differ
         const shortcode = String(item.code || item.shortcode || "");
         if (!shortcode || existingIds.has(shortcode)) continue;
 
         try {
-          // Try multiple post detail endpoints
-          let postDetail: Record<string, unknown> | null = null;
-          const postEndpoints = ["/post", "/post-info", "/media-info"];
-          for (const ep of postEndpoints) {
-            try {
-              postDetail = await rapidApiFetch(ep, { code: shortcode });
-              break;
-            } catch (e) {
-              const msg = e instanceof Error ? e.message : "";
-              if (msg.includes("404") || msg.includes("does not exist")) continue;
-              throw e;
-            }
+          // Try fetching post details for richer data
+          let post = item;
+          try {
+            const postDetail = await rapidApiFetch("/post", { code: shortcode });
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            post = (postDetail?.data || postDetail) as Record<string, any>;
+          } catch {
+            // Fall back to the item data from profile response
           }
-          const post: Record<string, unknown> = (postDetail?.data || postDetail || {}) as Record<string, unknown>;
 
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const p = post as Record<string, any>; // ADJUST: field names may differ
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const it = item as Record<string, any>;
           const caption =
-            p?.caption?.text ||
-            p?.edge_media_to_caption?.edges?.[0]?.node?.text ||
-            it?.caption?.text ||
+            post?.caption?.text ||
+            post?.edge_media_to_caption?.edges?.[0]?.node?.text ||
+            item?.caption?.text ||
             "";
           const imageUrl =
-            p?.image_versions2?.candidates?.[0]?.url ||
-            p?.display_url ||
-            p?.thumbnail_src ||
-            it?.image_versions2?.candidates?.[0]?.url ||
-            it?.display_url ||
+            post?.image_versions2?.candidates?.[0]?.url ||
+            post?.display_url ||
+            post?.thumbnail_src ||
+            item?.image_versions2?.candidates?.[0]?.url ||
+            item?.display_url ||
+            item?.thumbnail_src ||
             "";
-          const takenAt = p?.taken_at || it?.taken_at;
+          const takenAt = post?.taken_at || item?.taken_at;
           const publishedAt = takenAt
             ? new Date(typeof takenAt === "number" ? takenAt * 1000 : takenAt).toISOString()
             : new Date().toISOString();
@@ -255,12 +215,12 @@ export async function GET(request: NextRequest) {
             source: "instagram",
             source_id: shortcode,
             account: username,
-            caption: caption.slice(0, 2000),
+            caption: typeof caption === "string" ? caption.slice(0, 2000) : "",
             image_url: storedImageUrl || imageUrl || null,
             published_at: publishedAt,
             metadata: {
-              likes: p?.like_count || it?.like_count || 0,
-              comments: p?.comment_count || it?.comment_count || 0,
+              likes: post?.like_count || item?.like_count || 0,
+              comments: post?.comment_count || item?.comment_count || 0,
             },
           });
 
