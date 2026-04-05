@@ -57,7 +57,7 @@ async function downloadImageToStorage(
       .upload(path, buffer, { contentType, upsert: true });
 
     if (error) {
-      console.error("Storage upload error:", error.message);
+      console.error(`Storage upload error [${path}]:`, error.message, error);
       return null;
     }
 
@@ -217,7 +217,7 @@ export async function GET(request: NextRequest) {
           if (imageUrl) {
             storedImageUrl = await downloadImageToStorage(imageUrl, "instagram", shortcode);
             if (!storedImageUrl) {
-              console.error(`Failed to store image for ${shortcode}, CDN URL: ${String(imageUrl).slice(0, 100)}`);
+              accountResult.errors.push(`IMG_FAIL ${shortcode}: download/upload failed for ${String(imageUrl).slice(0, 80)}`);
             }
           }
 
