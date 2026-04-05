@@ -515,6 +515,7 @@ export default function ContentHubPage() {
   const [repostPost, setRepostPost] = useState<Post | null>(null);
   const [reps, setReps] = useState<Rep[]>([]);
   const [defaultScId, setDefaultScId] = useState("");
+  const [copiedCaptionId, setCopiedCaptionId] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -631,13 +632,27 @@ export default function ContentHubPage() {
                     {formatDate(post.published_at)}
                   </span>
 
-                  <button
-                    onClick={() => setRepostPost(post)}
-                    className="flex items-center gap-1 rounded-md bg-gray-900 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-gray-800 transition-colors"
-                  >
-                    <ShareIcon />
-                    Repost
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    {post.source === "instagram" && post.caption && (
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(post.caption!);
+                          setCopiedCaptionId(post.id);
+                          setTimeout(() => setCopiedCaptionId(null), 2000);
+                        }}
+                        className="flex items-center gap-1 rounded-md border border-stone-300 px-2 py-0.5 text-[10px] font-medium text-stone-600 hover:bg-stone-100 transition-colors"
+                      >
+                        {copiedCaptionId === post.id ? "Copied!" : "Caption"}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setRepostPost(post)}
+                      className="flex items-center gap-1 rounded-md bg-gray-900 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-gray-800 transition-colors"
+                    >
+                      <ShareIcon />
+                      Repost
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
