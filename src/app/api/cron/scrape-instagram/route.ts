@@ -61,9 +61,19 @@ async function downloadImageToStorage(
     const ext = contentType.includes("png") ? "png" : "jpg";
     const path = `${folder}/${filename}.${ext}`;
 
-    const { error } = await supabase.storage
+    // Try upload, if file exists try update
+    let error;
+    const { error: uploadErr } = await supabase.storage
       .from("post-images")
-      .upload(path, buffer, { contentType, upsert: true });
+      .upload(path, buffer, { contentType });
+    if (uploadErr?.message?.includes("already exists")) {
+      const { error: updateErr } = await supabase.storage
+        .from("post-images")
+        .update(path, buffer, { contentType });
+      error = updateErr;
+    } else {
+      error = uploadErr;
+    }
 
     if (error) {
       console.error(`Storage upload error [${path}]:`, error.message, error);
