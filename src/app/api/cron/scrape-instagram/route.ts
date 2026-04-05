@@ -220,10 +220,17 @@ export async function GET(request: NextRequest) {
 
         try {
           // Extract caption from graph API format (always use item, it has the data)
-          const caption =
-            item?.edge_media_to_caption?.edges?.[0]?.node?.text ||
-            item?.caption?.text ||
-            "";
+          const captionEdges = item?.edge_media_to_caption?.edges;
+          const captionFromEdges = Array.isArray(captionEdges) && captionEdges.length > 0
+            ? captionEdges[0]?.node?.text
+            : null;
+          const caption = captionFromEdges || item?.caption?.text || "";
+
+          // Debug first item's caption extraction
+          if (shortcode === shortcodes[0]) {
+            accountResult.debug = (accountResult.debug || "") +
+              ` | CAPTION_DEBUG: edges=${JSON.stringify(captionEdges).slice(0, 100)}, result="${String(caption).slice(0, 50)}"`;
+          }
 
           // Use display_url or thumbnail_src from the profile response
           const imageUrl = String(item?.display_url || item?.thumbnail_src || "");
