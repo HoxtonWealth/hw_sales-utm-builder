@@ -236,21 +236,26 @@ export async function GET(request: NextRequest) {
               ` | CAPTION_DEBUG: edges=${JSON.stringify(captionEdges).slice(0, 100)}, result="${String(caption).slice(0, 50)}"`;
           }
 
-          // Use display_url or thumbnail_src from the profile response
-          const imageUrl = String(item?.display_url || item?.thumbnail_src || "");
+          // Use media_preview (base64 thumbnail) as data URI — CDN URLs don't work cross-origin
+          const mediaPreview = item?.media_preview ? `data:image/jpeg;base64,${item.media_preview}` : null;
+          const cdnUrl = String(item?.display_url || item?.thumbnail_src || "");
 
           const takenAt = item?.taken_at_timestamp || item?.taken_at;
           const publishedAt = takenAt
             ? new Date(typeof takenAt === "number" ? takenAt * 1000 : takenAt).toISOString()
             : new Date().toISOString();
 
-          // Try to download image to Supabase Storage
+          // Try Supabase Storage upload, fall back to base64 preview, then CDN URL
           let finalImageUrl: string | null = null;
-          if (imageUrl) {
-            const stored = await downloadImageToStorage(imageUrl, "instagram", shortcode);
-            // Use Supabase Storage URL if upload succeeded, otherwise keep CDN URL
-            // (CDN URLs from graph API are longer-lived than private API URLs)
-            finalImageUrl = stored || imageUrl;
+          if (cdnUrl) {
+            const stored = await downloadImageToStorage(cdnUrl, "instagram", shortcode);
+            if (stored) {
+              finalImageUrl = stored;
+            }
+          }
+          if (!finalImageUrl) {
+            // Use base64 media_preview as reliable fallback (works everywhere)
+            finalImageUrl = mediaPreview || cdnUrl || null;
           }
 
           const insertData = {
