@@ -123,16 +123,19 @@ export async function GET(request: NextRequest) {
     results[username] = accountResult;
 
     try {
-      // Probe API root to discover endpoints (logged for debugging)
-      try {
-        const probeRes = await fetch(`https://${RAPIDAPI_HOST}/`, {
-          headers: { "x-rapidapi-host": RAPIDAPI_HOST, "x-rapidapi-key": process.env.RAPIDAPI_KEY! },
-        });
-        const probeText = await probeRes.text();
-        console.log(`Instagram API root (${probeRes.status}): ${probeText.slice(0, 500)}`);
-      } catch (probeErr) {
-        console.log("Instagram API root probe failed:", probeErr);
+      // Probe API to discover endpoints — return in response for debugging
+      const probeResults: Record<string, string> = {};
+      for (const probePath of ["/", "/endpoints", "/api", "/docs"]) {
+        try {
+          const probeRes = await fetch(`https://${RAPIDAPI_HOST}${probePath}`, {
+            headers: { "x-rapidapi-host": RAPIDAPI_HOST, "x-rapidapi-key": process.env.RAPIDAPI_KEY! },
+          });
+          probeResults[probePath] = `${probeRes.status}: ${(await probeRes.text()).slice(0, 300)}`;
+        } catch (e) {
+          probeResults[probePath] = `error: ${e instanceof Error ? e.message : "unknown"}`;
+        }
       }
+      accountResult.errors.push("API_PROBE: " + JSON.stringify(probeResults));
 
       const userId = await getUserId(username);
 
