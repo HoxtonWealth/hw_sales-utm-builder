@@ -113,9 +113,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "No IG_ACCOUNTS configured" }, { status: 400 });
   }
 
-  // Re-sync: delete all existing Instagram posts — the profile always returns
-  // the latest ~12 posts, so we re-insert them fresh each run
-  await supabase.from("posts").delete().eq("source", "instagram");
+  // Delete all existing Instagram posts first for clean re-sync
+  const { error: deleteErr } = await supabase.from("posts").delete().eq("source", "instagram");
+  if (deleteErr) {
+    return NextResponse.json({ error: `Cleanup failed: ${deleteErr.message}` }, { status: 500 });
+  }
 
   const results: Record<string, { added: number; errors: string[]; debug?: string }> = {};
 
@@ -249,18 +251,26 @@ export async function GET(request: NextRequest) {
             finalImageUrl = stored || imageUrl;
           }
 
-          const { error: insertError } = await supabase.from("posts").insert({
-            source: "instagram",
+          const insertData = {
+            source: "instagram" as const,
             source_id: shortcode,
             account: username,
-            caption: typeof caption === "string" ? caption.slice(0, 2000) : "",
+            caption: String(caption || "").slice(0, 2000),
             image_url: finalImageUrl,
             published_at: publishedAt,
             metadata: {
               likes: item?.edge_liked_by?.count || item?.like_count || 0,
               comments: item?.edge_media_to_comment?.count || item?.comment_count || 0,
             },
-          });
+          };
+
+          // Debug: log first insert's full data
+          if (shortcode === shortcodes[0]) {
+            accountResult.debug = (accountResult.debug || "") +
+              ` | INSERT_DATA: caption_len=${insertData.caption.length}, caption_start="${insertData.caption.slice(0, 30)}", img=${insertData.image_url ? "YES" : "NULL"}`;
+          }
+
+          const { error: insertError } = await supabase.from("posts").insert(insertData);
 
           if (insertError) {
             accountResult.errors.push(`Insert ${shortcode}: ${insertError.message}`);
