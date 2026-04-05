@@ -50,9 +50,15 @@ async function downloadImageToStorage(
         "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
         "Referer": "https://www.instagram.com/",
       },
+      cache: "no-store",
     });
     if (!res.ok) {
-      console.error(`Image fetch failed [${res.status}]: ${imageUrl.slice(0, 100)}`);
+      console.error(`Image fetch failed [${res.status}] for ${imageUrl.slice(0, 80)}`);
+      return null;
+    }
+    const ct = res.headers.get("content-type") || "";
+    if (!ct.startsWith("image/")) {
+      console.error(`Image fetch returned non-image content-type: ${ct} for ${imageUrl.slice(0, 80)}`);
       return null;
     }
 
