@@ -124,9 +124,25 @@ export async function GET(request: NextRequest) {
     try {
       const userId = await getUserId(username);
 
+      // Try multiple endpoint names — RapidAPI Instagram scrapers vary
+      let mediaResponse: Record<string, unknown> | null = null;
+      const mediaEndpoints = ["/user-medias", "/user-posts", "/user-media", "/media", "/posts"];
+      for (const ep of mediaEndpoints) {
+        try {
+          mediaResponse = await rapidApiFetch(ep, { user_id: userId });
+          break;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "";
+          if (msg.includes("404") || msg.includes("does not exist")) continue;
+          throw e; // re-throw non-404 errors
+        }
+      }
+      if (!mediaResponse) {
+        accountResult.errors.push("No working media endpoint found. Tried: " + mediaEndpoints.join(", "));
+        continue;
+      }
       // ADJUST: field name may differ
-      const mediaResponse = await rapidApiFetch("/user-media", { user_id: userId });
-      const items = mediaResponse?.data?.items || mediaResponse?.items || mediaResponse?.data || [];
+      const items = (mediaResponse?.data as Record<string, unknown>)?.items || mediaResponse?.items || mediaResponse?.data || [];
 
       if (!Array.isArray(items)) {
         accountResult.errors.push("Unexpected media response format");
@@ -155,24 +171,38 @@ export async function GET(request: NextRequest) {
         if (!shortcode || existingIds.has(shortcode)) continue;
 
         try {
-          // ADJUST: field name may differ
-          const postDetail = await rapidApiFetch("/post", { code: shortcode });
-          const post = postDetail?.data || postDetail;
+          // Try multiple post detail endpoints
+          let postDetail: Record<string, unknown> | null = null;
+          const postEndpoints = ["/post", "/post-info", "/media-info"];
+          for (const ep of postEndpoints) {
+            try {
+              postDetail = await rapidApiFetch(ep, { code: shortcode });
+              break;
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : "";
+              if (msg.includes("404") || msg.includes("does not exist")) continue;
+              throw e;
+            }
+          }
+          const post: Record<string, unknown> = (postDetail?.data || postDetail || {}) as Record<string, unknown>;
 
-          // ADJUST: field names may differ
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const p = post as Record<string, any>; // ADJUST: field names may differ
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const it = item as Record<string, any>;
           const caption =
-            post?.caption?.text ||
-            post?.edge_media_to_caption?.edges?.[0]?.node?.text ||
-            item?.caption?.text ||
+            p?.caption?.text ||
+            p?.edge_media_to_caption?.edges?.[0]?.node?.text ||
+            it?.caption?.text ||
             "";
           const imageUrl =
-            post?.image_versions2?.candidates?.[0]?.url ||
-            post?.display_url ||
-            post?.thumbnail_src ||
-            item?.image_versions2?.candidates?.[0]?.url ||
-            item?.display_url ||
+            p?.image_versions2?.candidates?.[0]?.url ||
+            p?.display_url ||
+            p?.thumbnail_src ||
+            it?.image_versions2?.candidates?.[0]?.url ||
+            it?.display_url ||
             "";
-          const takenAt = post?.taken_at || item?.taken_at;
+          const takenAt = p?.taken_at || it?.taken_at;
           const publishedAt = takenAt
             ? new Date(typeof takenAt === "number" ? takenAt * 1000 : takenAt).toISOString()
             : new Date().toISOString();
@@ -190,8 +220,8 @@ export async function GET(request: NextRequest) {
             image_url: storedImageUrl || imageUrl || null,
             published_at: publishedAt,
             metadata: {
-              likes: post?.like_count || item?.like_count || 0,
-              comments: post?.comment_count || item?.comment_count || 0,
+              likes: p?.like_count || it?.like_count || 0,
+              comments: p?.comment_count || it?.comment_count || 0,
             },
           });
 
