@@ -29,11 +29,12 @@ async function rapidApiFetch(endpoint: string, params: Record<string, string>) {
     },
   });
 
+  const text = await res.text();
   if (!res.ok) {
-    throw new Error(`RapidAPI ${endpoint} returned ${res.status}: ${await res.text()}`);
+    throw new Error(`RapidAPI ${endpoint} returned ${res.status}: ${text}`);
   }
 
-  return res.json();
+  return JSON.parse(text);
 }
 
 async function getUserId(username: string): Promise<string> {
@@ -122,6 +123,17 @@ export async function GET(request: NextRequest) {
     results[username] = accountResult;
 
     try {
+      // Probe API root to discover endpoints (logged for debugging)
+      try {
+        const probeRes = await fetch(`https://${RAPIDAPI_HOST}/`, {
+          headers: { "x-rapidapi-host": RAPIDAPI_HOST, "x-rapidapi-key": process.env.RAPIDAPI_KEY! },
+        });
+        const probeText = await probeRes.text();
+        console.log(`Instagram API root (${probeRes.status}): ${probeText.slice(0, 500)}`);
+      } catch (probeErr) {
+        console.log("Instagram API root probe failed:", probeErr);
+      }
+
       const userId = await getUserId(username);
 
       // Try multiple endpoint + param combos — RapidAPI Instagram scrapers vary
