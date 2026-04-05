@@ -124,21 +124,36 @@ export async function GET(request: NextRequest) {
     try {
       const userId = await getUserId(username);
 
-      // Try multiple endpoint names — RapidAPI Instagram scrapers vary
+      // Try multiple endpoint + param combos — RapidAPI Instagram scrapers vary
       let mediaResponse: Record<string, unknown> | null = null;
-      const mediaEndpoints = ["/user-medias", "/user-posts", "/user-media", "/media", "/posts"];
-      for (const ep of mediaEndpoints) {
+      const mediaAttempts: { ep: string; params: Record<string, string> }[] = [
+        { ep: "/user-medias", params: { user_id: userId } },
+        { ep: "/user-medias", params: { username } },
+        { ep: "/user-posts", params: { user_id: userId } },
+        { ep: "/user-posts", params: { username } },
+        { ep: "/user-feed", params: { user_id: userId } },
+        { ep: "/user-feed", params: { username } },
+        { ep: "/media", params: { user_id: userId } },
+        { ep: "/posts", params: { user_id: userId } },
+        { ep: "/get-user-medias", params: { username } },
+        { ep: "/v1/user-medias", params: { username } },
+      ];
+      const triedEndpoints: string[] = [];
+      for (const { ep, params } of mediaAttempts) {
         try {
-          mediaResponse = await rapidApiFetch(ep, { user_id: userId });
+          triedEndpoints.push(`${ep}(${Object.keys(params).join(",")})`);
+          mediaResponse = await rapidApiFetch(ep, params);
+          console.log(`Instagram: working endpoint = ${ep} with params ${JSON.stringify(params)}`);
           break;
         } catch (e) {
           const msg = e instanceof Error ? e.message : "";
+          console.log(`Instagram: ${ep} failed: ${msg.slice(0, 200)}`);
           if (msg.includes("404") || msg.includes("does not exist")) continue;
-          throw e; // re-throw non-404 errors
+          throw e;
         }
       }
       if (!mediaResponse) {
-        accountResult.errors.push("No working media endpoint found. Tried: " + mediaEndpoints.join(", "));
+        accountResult.errors.push("No working media endpoint found. Tried: " + triedEndpoints.join(", "));
         continue;
       }
       // ADJUST: field name may differ
