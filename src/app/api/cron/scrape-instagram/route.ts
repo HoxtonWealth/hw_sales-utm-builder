@@ -113,12 +113,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "No IG_ACCOUNTS configured" }, { status: 400 });
   }
 
-  // Cleanup: delete Instagram posts with expired CDN URLs or missing images
+  // Cleanup: delete Instagram posts with missing captions AND images (broken scrapes)
   await supabase
     .from("posts")
     .delete()
     .eq("source", "instagram")
-    .or("image_url.like.%fbcdn.net%,image_url.is.null");
+    .is("image_url", null)
+    .eq("caption", "");
 
   const results: Record<string, { added: number; errors: string[]; debug?: string }> = {};
 
@@ -222,42 +223,27 @@ export async function GET(request: NextRequest) {
         if (!shortcode || existingIds.has(shortcode)) continue;
 
         try {
-          // Try fetching post details for richer data
-          let post = item;
-          try {
-            const postDetail = await rapidApiFetch("/post", { code: shortcode });
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            post = (postDetail?.data || postDetail) as Record<string, any>;
-          } catch {
-            // Fall back to the item data from profile response
-          }
-
+          // Extract caption from graph API format (always use item, it has the data)
           const caption =
-            post?.caption?.text ||
-            post?.edge_media_to_caption?.edges?.[0]?.node?.text ||
+            item?.edge_media_to_caption?.edges?.[0]?.node?.text ||
             item?.caption?.text ||
             "";
-          const imageUrl =
-            post?.image_versions2?.candidates?.[0]?.url ||
-            post?.display_url ||
-            post?.thumbnail_src ||
-            item?.image_versions2?.candidates?.[0]?.url ||
-            item?.display_url ||
-            item?.thumbnail_src ||
-            "";
-          const takenAt = post?.taken_at || item?.taken_at;
+
+          // Use display_url or thumbnail_src from the profile response
+          const imageUrl = String(item?.display_url || item?.thumbnail_src || "");
+
+          const takenAt = item?.taken_at_timestamp || item?.taken_at;
           const publishedAt = takenAt
             ? new Date(typeof takenAt === "number" ? takenAt * 1000 : takenAt).toISOString()
             : new Date().toISOString();
 
-          let storedImageUrl: string | null = null;
+          // Try to download image to Supabase Storage
+          let finalImageUrl: string | null = null;
           if (imageUrl) {
-            storedImageUrl = await downloadImageToStorage(String(imageUrl), "instagram", shortcode);
-            if (!storedImageUrl) {
-              accountResult.errors.push(`IMG_FAIL ${shortcode}: url_start=${String(imageUrl).slice(0, 50)}`);
-            }
-          } else {
-            accountResult.errors.push(`NO_IMG ${shortcode}: no imageUrl found`);
+            const stored = await downloadImageToStorage(imageUrl, "instagram", shortcode);
+            // Use Supabase Storage URL if upload succeeded, otherwise keep CDN URL
+            // (CDN URLs from graph API are longer-lived than private API URLs)
+            finalImageUrl = stored || imageUrl;
           }
 
           const { error: insertError } = await supabase.from("posts").insert({
@@ -265,11 +251,11 @@ export async function GET(request: NextRequest) {
             source_id: shortcode,
             account: username,
             caption: typeof caption === "string" ? caption.slice(0, 2000) : "",
-            image_url: storedImageUrl || null, // Only use Supabase URL, never CDN
+            image_url: finalImageUrl,
             published_at: publishedAt,
             metadata: {
-              likes: post?.like_count || item?.like_count || 0,
-              comments: post?.comment_count || item?.comment_count || 0,
+              likes: item?.edge_liked_by?.count || item?.like_count || 0,
+              comments: item?.edge_media_to_comment?.count || item?.comment_count || 0,
             },
           });
 
