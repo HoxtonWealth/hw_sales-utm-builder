@@ -381,6 +381,20 @@ function RepostModal({
           </div>
         )}
 
+        {/* Open blog article */}
+        {post.source === "blog" && (
+          <div className="px-5 pt-2">
+            <a
+              href={`https://hoxtonwealth.com/blog/${post.source_id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-stone-300 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50 transition-colors"
+            >
+              Open article ↗
+            </a>
+          </div>
+        )}
+
         {/* Divider */}
         <div className="mx-5 mt-4 border-t border-stone-200" />
 
