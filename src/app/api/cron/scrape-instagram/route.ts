@@ -82,7 +82,7 @@ async function downloadImageToStorage(
     }
 
     if (error) {
-      console.error(`Storage upload error [${path}]:`, error.message, error);
+      console.error(`Storage upload error [${path}]: ${error.message} | ${JSON.stringify(error)}`);
       return null;
     }
 
@@ -187,6 +187,18 @@ export async function GET(request: NextRequest) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const items: Record<string, any>[] = mediaItems.map((item: any) => item?.node || item);
 
+      // Debug: dump first item's keys and caption-related fields
+      if (items.length > 0) {
+        const first = items[0];
+        const keys = Object.keys(first);
+        const captionField = first?.edge_media_to_caption || first?.caption || "NO_CAPTION_FIELD";
+        accountResult.debug = (accountResult.debug || "") +
+          ` | item keys: [${keys.slice(0, 15).join(", ")}...]` +
+          ` | caption field: ${JSON.stringify(captionField).slice(0, 200)}` +
+          ` | display_url: ${first?.display_url ? "YES" : "NO"}` +
+          ` | thumbnail_src: ${first?.thumbnail_src ? "YES" : "NO"}`;
+      }
+
       // Get existing source_ids to filter duplicates
       const shortcodes = items
         .map((item) => String(item.code || item.shortcode || ""))
@@ -240,10 +252,12 @@ export async function GET(request: NextRequest) {
 
           let storedImageUrl: string | null = null;
           if (imageUrl) {
-            storedImageUrl = await downloadImageToStorage(imageUrl, "instagram", shortcode);
+            storedImageUrl = await downloadImageToStorage(String(imageUrl), "instagram", shortcode);
             if (!storedImageUrl) {
-              accountResult.errors.push(`IMG_FAIL ${shortcode}: download/upload failed for ${String(imageUrl).slice(0, 80)}`);
+              accountResult.errors.push(`IMG_FAIL ${shortcode}: url_start=${String(imageUrl).slice(0, 50)}`);
             }
+          } else {
+            accountResult.errors.push(`NO_IMG ${shortcode}: no imageUrl found`);
           }
 
           const { error: insertError } = await supabase.from("posts").insert({
