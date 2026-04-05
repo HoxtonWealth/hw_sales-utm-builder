@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
       { posts: posts ?? [], lastSynced: latestLog?.created_at ?? null },
       {
         headers: {
-          "Cache-Control": "s-maxage=300, stale-while-revalidate",
+          "Cache-Control": "no-store",
         },
       }
     );
