@@ -113,13 +113,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "No IG_ACCOUNTS configured" }, { status: 400 });
   }
 
-  // Cleanup: delete Instagram posts with missing captions AND images (broken scrapes)
-  await supabase
-    .from("posts")
-    .delete()
-    .eq("source", "instagram")
-    .is("image_url", null)
-    .eq("caption", "");
+  // Re-sync: delete all existing Instagram posts — the profile always returns
+  // the latest ~12 posts, so we re-insert them fresh each run
+  await supabase.from("posts").delete().eq("source", "instagram");
 
   const results: Record<string, { added: number; errors: string[]; debug?: string }> = {};
 
