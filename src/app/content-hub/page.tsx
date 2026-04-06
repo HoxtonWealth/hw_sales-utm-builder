@@ -16,7 +16,7 @@ type Post = {
   metadata: Record<string, unknown> | null;
 };
 
-type Filter = "all" | "instagram" | "blog";
+type Filter = "all" | "blog" | `instagram:${string}`;
 
 function formatLastSynced(dateStr: string | null): string {
   if (!dateStr) return "Never";
@@ -581,8 +581,15 @@ export default function ContentHubPage() {
     }).catch(() => setLoading(false));
   }, []);
 
+  // Derive unique Instagram accounts for filter tabs
+  const igAccounts = Array.from(new Set(posts.filter((p) => p.source === "instagram").map((p) => p.account))).sort();
+
   const filteredPosts =
-    filter === "all" ? posts : posts.filter((p) => p.source === filter);
+    filter === "all"
+      ? posts
+      : filter === "blog"
+        ? posts.filter((p) => p.source === "blog")
+        : posts.filter((p) => p.source === "instagram" && p.account === filter.replace("instagram:", ""));
 
   if (loading) {
     return (
@@ -604,8 +611,8 @@ export default function ContentHubPage() {
         </div>
 
         {/* Filter tabs */}
-        <div className="mt-4 flex gap-2">
-          {(["all", "instagram", "blog"] as Filter[]).map((tab) => (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {(["all", ...igAccounts.map((a) => `instagram:${a}`), "blog"] as Filter[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setFilter(tab)}
@@ -617,9 +624,9 @@ export default function ContentHubPage() {
             >
               {tab === "all"
                 ? "All"
-                : tab === "instagram"
-                  ? "Instagram"
-                  : "Blog"}
+                : tab === "blog"
+                  ? "Blog"
+                  : `IG: ${tab.replace("instagram:", "")}`}
             </button>
           ))}
         </div>
