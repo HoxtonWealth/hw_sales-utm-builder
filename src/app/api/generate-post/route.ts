@@ -24,7 +24,9 @@ export async function POST(request: NextRequest) {
     const contentDesc =
       source === "blog"
         ? `Blog article titled "${title || "Untitled"}". Description: ${caption || "No description."}`
-        : `Instagram post by @${title || "unknown"}. Caption: ${caption || "No caption."}`;
+        : source === "linkedin"
+          ? `LinkedIn post by ${title || "unknown"}. Content: ${caption || "No content."}`
+          : `Instagram post by @${title || "unknown"}. Caption: ${caption || "No caption."}`;
 
     const platformGuide =
       platform === "email"

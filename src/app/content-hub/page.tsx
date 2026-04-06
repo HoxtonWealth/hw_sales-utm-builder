@@ -6,7 +6,7 @@ type Rep = { name: string; sc_id: string | null };
 
 type Post = {
   id: string;
-  source: "instagram" | "blog";
+  source: "instagram" | "blog" | "linkedin";
   source_id: string;
   account: string;
   caption: string | null;
@@ -16,7 +16,7 @@ type Post = {
   metadata: Record<string, unknown> | null;
 };
 
-type Filter = "all" | "blog" | `instagram:${string}`;
+type Filter = "all" | "blog" | `instagram:${string}` | `linkedin:${string}`;
 
 function formatLastSynced(dateStr: string | null): string {
   if (!dateStr) return "Never";
@@ -215,6 +215,9 @@ function RepostModal({
       ? `https://hoxtonwealth.com/blog/${post.source_id}`
       : "");
 
+  const originalPostUrl =
+    (post.metadata?.post_url as string) || (post.metadata?.share_url as string) || "";
+
   const postTitle =
     post.source === "blog"
       ? (post.metadata?.title as string) || post.source_id
@@ -329,10 +332,12 @@ function RepostModal({
               className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
                 post.source === "instagram"
                   ? "bg-rose-100 text-rose-700"
-                  : "bg-blue-100 text-blue-700"
+                  : post.source === "linkedin"
+                    ? "bg-sky-100 text-sky-700"
+                    : "bg-blue-100 text-blue-700"
               }`}
             >
-              {post.source === "instagram" ? "Instagram" : "Blog"}
+              {post.source === "instagram" ? "Instagram" : post.source === "linkedin" ? "LinkedIn" : "Blog"}
             </span>
             <p className="mt-1 text-sm font-bold text-gray-900 truncate">
               {postTitle}
@@ -367,7 +372,7 @@ function RepostModal({
         )}
 
         {/* Copy caption */}
-        {post.source === "instagram" && post.caption && (
+        {(post.source === "instagram" || post.source === "linkedin") && post.caption && (
           <div className="px-5 pt-2">
             <button
               onClick={() => {
@@ -410,6 +415,20 @@ function RepostModal({
               className="flex w-full items-center justify-center gap-2 rounded-lg border border-stone-300 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50 transition-colors"
             >
               Open article ↗
+            </a>
+          </div>
+        )}
+
+        {/* Open original LinkedIn post */}
+        {post.source === "linkedin" && originalPostUrl && (
+          <div className="px-5 pt-2">
+            <a
+              href={originalPostUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-stone-300 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50 transition-colors"
+            >
+              Open original post ↗
             </a>
           </div>
         )}
@@ -581,15 +600,18 @@ export default function ContentHubPage() {
     }).catch(() => setLoading(false));
   }, []);
 
-  // Derive unique Instagram accounts for filter tabs
+  // Derive unique accounts for filter tabs
   const igAccounts = Array.from(new Set(posts.filter((p) => p.source === "instagram").map((p) => p.account))).sort();
+  const liAccounts = Array.from(new Set(posts.filter((p) => p.source === "linkedin").map((p) => p.account))).sort();
 
   const filteredPosts =
     filter === "all"
       ? posts
       : filter === "blog"
         ? posts.filter((p) => p.source === "blog")
-        : posts.filter((p) => p.source === "instagram" && p.account === filter.replace("instagram:", ""));
+        : filter.startsWith("linkedin:")
+          ? posts.filter((p) => p.source === "linkedin" && p.account === filter.replace("linkedin:", ""))
+          : posts.filter((p) => p.source === "instagram" && p.account === filter.replace("instagram:", ""));
 
   if (loading) {
     return (
@@ -612,7 +634,7 @@ export default function ContentHubPage() {
 
         {/* Filter tabs */}
         <div className="mt-4 flex flex-wrap gap-2">
-          {(["all", ...igAccounts.map((a) => `instagram:${a}`), "blog"] as Filter[]).map((tab) => (
+          {(["all", ...igAccounts.map((a) => `instagram:${a}`), ...liAccounts.map((a) => `linkedin:${a}`), "blog"] as Filter[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setFilter(tab)}
@@ -626,7 +648,9 @@ export default function ContentHubPage() {
                 ? "All"
                 : tab === "blog"
                   ? "Blog"
-                  : `IG: ${tab.replace("instagram:", "")}`}
+                  : tab.startsWith("linkedin:")
+                    ? `LI: ${tab.replace("linkedin:", "")}`
+                    : `IG: ${tab.replace("instagram:", "")}`}
             </button>
           ))}
         </div>
@@ -673,16 +697,18 @@ export default function ContentHubPage() {
                     className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
                       post.source === "instagram"
                         ? "bg-rose-100 text-rose-700"
-                        : "bg-blue-100 text-blue-700"
+                        : post.source === "linkedin"
+                          ? "bg-sky-100 text-sky-700"
+                          : "bg-blue-100 text-blue-700"
                     }`}
                   >
-                    {post.source === "instagram" ? "Instagram" : "Blog"}
+                    {post.source === "instagram" ? "Instagram" : post.source === "linkedin" ? "LinkedIn" : "Blog"}
                   </span>
 
                   <p className="mt-1.5 text-xs font-bold text-gray-900 line-clamp-1">
-                    {post.source === "instagram"
-                      ? `@${post.account}`
-                      : (post.metadata?.title as string) || post.account}
+                    {post.source === "blog"
+                      ? (post.metadata?.title as string) || post.account
+                      : `@${post.account}`}
                   </p>
 
                   {post.caption && (
@@ -699,7 +725,7 @@ export default function ContentHubPage() {
                   </span>
 
                   <div className="flex items-center gap-1.5">
-                    {post.source === "instagram" && post.caption && (
+                    {(post.source === "instagram" || post.source === "linkedin") && post.caption && (
                       <button
                         onClick={() => {
                           navigator.clipboard.writeText(post.caption!);
