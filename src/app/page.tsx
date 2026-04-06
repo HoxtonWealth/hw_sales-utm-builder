@@ -14,6 +14,9 @@ export default function BuilderPage() {
 
   const [copied, setCopied] = useState(false);
   const [urlError, setUrlError] = useState("");
+  const [shortUrl, setShortUrl] = useState("");
+  const [shortening, setShortening] = useState(false);
+  const [shortCopied, setShortCopied] = useState(false);
 
   // Combobox state
   const [search, setSearch] = useState("");
@@ -88,6 +91,7 @@ export default function BuilderPage() {
 
   function handleUrlChange(val: string) {
     setUrl(val);
+    setShortUrl("");
     if (val && !isValidUrl(val)) {
       setUrlError("Please enter a valid URL (starting with http:// or https://)");
     } else {
@@ -101,6 +105,33 @@ export default function BuilderPage() {
     navigator.clipboard.writeText(utmUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function handleShorten() {
+    const utmUrl = generateUtmUrl();
+    if (!utmUrl) return;
+    setShortening(true);
+    try {
+      const res = await fetch("/api/shorten", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: utmUrl }),
+      });
+      const data = await res.json();
+      if (data.shortUrl) {
+        setShortUrl(data.shortUrl);
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setShortening(false);
+    }
+  }
+
+  function handleCopyShort() {
+    navigator.clipboard.writeText(shortUrl);
+    setShortCopied(true);
+    setTimeout(() => setShortCopied(false), 2000);
   }
 
   const utmUrl = generateUtmUrl();
@@ -229,13 +260,38 @@ export default function BuilderPage() {
                 <div className="rounded-md bg-gray-50 p-3 text-xs font-mono break-all leading-relaxed">
                   <HighlightedUrl url={utmUrl} />
                 </div>
-                <button
-                  type="button"
-                  onClick={handleCopy}
-                  className="mt-3 w-full rounded-md bg-gray-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-800 transition-colors"
-                >
-                  {copied ? "Copied!" : "Copy link"}
-                </button>
+                <div className="mt-3 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCopy}
+                    className="flex-1 rounded-md bg-gray-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-800 transition-colors"
+                  >
+                    {copied ? "Copied!" : "Copy link"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleShorten}
+                    disabled={shortening}
+                    className="rounded-md border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                  >
+                    {shortening ? "..." : "Shorten"}
+                  </button>
+                </div>
+
+                {shortUrl && (
+                  <div className="mt-3">
+                    <div className="rounded-md bg-blue-50 p-3 text-sm font-mono break-all text-blue-700">
+                      {shortUrl}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCopyShort}
+                      className="mt-2 w-full rounded-md border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 transition-colors"
+                    >
+                      {shortCopied ? "Copied!" : "Copy short link"}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
