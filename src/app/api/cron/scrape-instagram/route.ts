@@ -37,44 +37,41 @@ async function rapidApiFetch(endpoint: string, params: Record<string, string>) {
   return JSON.parse(text);
 }
 
-async function downloadImageToStorage(
-  imageUrl: string,
+async function downloadToStorage(
+  mediaUrl: string,
+  bucket: string,
   folder: string,
-  filename: string
+  filename: string,
+  expectedType: "image" | "video"
 ): Promise<string | null> {
   try {
     const supabase = getSupabase();
-    const res = await fetch(imageUrl, {
+    const res = await fetch(mediaUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+        "Accept": expectedType === "video" ? "video/*,*/*;q=0.8" : "image/webp,image/apng,image/*,*/*;q=0.8",
         "Referer": "https://www.instagram.com/",
       },
       cache: "no-store",
     });
     if (!res.ok) {
-      console.error(`Image fetch failed [${res.status}] for ${imageUrl.slice(0, 80)}`);
-      return null;
-    }
-    const ct = res.headers.get("content-type") || "";
-    if (!ct.startsWith("image/")) {
-      console.error(`Image fetch returned non-image content-type: ${ct} for ${imageUrl.slice(0, 80)}`);
+      console.error(`${expectedType} fetch failed [${res.status}] for ${mediaUrl.slice(0, 80)}`);
       return null;
     }
 
     const buffer = Buffer.from(await res.arrayBuffer());
-    const contentType = res.headers.get("content-type") || "image/jpeg";
-    const ext = contentType.includes("png") ? "png" : "jpg";
+    const contentType = res.headers.get("content-type") || (expectedType === "video" ? "video/mp4" : "image/jpeg");
+    const ext = expectedType === "video" ? "mp4" : contentType.includes("png") ? "png" : "jpg";
     const path = `${folder}/${filename}.${ext}`;
 
     // Try upload, if file exists try update
     let error;
     const { error: uploadErr } = await supabase.storage
-      .from("post-images")
+      .from(bucket)
       .upload(path, buffer, { contentType });
     if (uploadErr?.message?.includes("already exists")) {
       const { error: updateErr } = await supabase.storage
-        .from("post-images")
+        .from(bucket)
         .update(path, buffer, { contentType });
       error = updateErr;
     } else {
@@ -87,12 +84,12 @@ async function downloadImageToStorage(
     }
 
     const { data: publicUrl } = supabase.storage
-      .from("post-images")
+      .from(bucket)
       .getPublicUrl(path);
 
     return publicUrl.publicUrl;
   } catch (err) {
-    console.error("Image download error:", err);
+    console.error(`${expectedType} download error:`, err);
     return null;
   }
 }
@@ -248,7 +245,7 @@ export async function GET(request: NextRequest) {
           // Try Supabase Storage upload, fall back to base64 preview, then CDN URL
           let finalImageUrl: string | null = null;
           if (cdnUrl) {
-            const stored = await downloadImageToStorage(cdnUrl, "instagram", shortcode);
+            const stored = await downloadToStorage(cdnUrl, "post-images", "instagram", shortcode, "image");
             if (stored) {
               finalImageUrl = stored;
             }
@@ -258,16 +255,24 @@ export async function GET(request: NextRequest) {
             finalImageUrl = mediaPreview || cdnUrl || null;
           }
 
+          // Handle video posts — store CDN URL directly (no storage upload to avoid timeout/size limits)
+          const isVideo = item?.is_video === true || item?.media_type === 2;
+          const finalVideoUrl: string | null = isVideo
+            ? (item?.video_url || item?.video_versions?.[0]?.url || null)
+            : null;
+
           const insertData = {
             source: "instagram" as const,
             source_id: shortcode,
             account: username,
             caption: String(caption || "").slice(0, 2000),
             image_url: finalImageUrl,
+            video_url: finalVideoUrl,
             published_at: publishedAt,
             metadata: {
               likes: item?.edge_liked_by?.count || item?.like_count || 0,
               comments: item?.edge_media_to_comment?.count || item?.comment_count || 0,
+              is_video: isVideo,
             },
           };
 

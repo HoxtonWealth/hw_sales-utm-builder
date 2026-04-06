@@ -11,6 +11,7 @@ type Post = {
   account: string;
   caption: string | null;
   image_url: string | null;
+  video_url: string | null;
   published_at: string;
   metadata: Record<string, unknown> | null;
 };
@@ -53,20 +54,20 @@ function truncate(text: string, max: number): string {
   return text.slice(0, max).trimEnd() + "...";
 }
 
-async function handleDownload(imageUrl: string, filename: string) {
+async function handleDownload(url: string, filename: string) {
   try {
-    const res = await fetch(imageUrl);
+    const res = await fetch(url);
     const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
+    const blobUrl = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
+    a.href = blobUrl;
     a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    URL.revokeObjectURL(blobUrl);
   } catch {
-    window.open(imageUrl, "_blank");
+    window.open(url, "_blank");
   }
 }
 
@@ -381,6 +382,24 @@ function RepostModal({
           </div>
         )}
 
+        {/* Download video */}
+        {post.video_url && (
+          <div className="px-5 pt-2">
+            <button
+              onClick={() =>
+                handleDownload(
+                  post.video_url!,
+                  `${post.source}-${post.source_id}.mp4`
+                )
+              }
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-stone-300 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50 transition-colors"
+            >
+              <DownloadIcon />
+              Download video
+            </button>
+          </div>
+        )}
+
         {/* Open blog article */}
         {post.source === "blog" && (
           <div className="px-5 pt-2">
@@ -622,7 +641,7 @@ export default function ContentHubPage() {
                 className="overflow-hidden rounded-xl border border-stone-200 bg-white"
               >
                 {/* Image — shorter aspect */}
-                <div className="aspect-[4/3] bg-stone-100">
+                <div className="relative aspect-[4/3] bg-stone-100">
                   {post.image_url ? (
                     <img
                       src={post.image_url}
@@ -630,6 +649,15 @@ export default function ContentHubPage() {
                       className="h-full w-full object-cover"
                     />
                   ) : null}
+                  {post.video_url && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="rounded-full bg-black/50 p-2">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Body */}
