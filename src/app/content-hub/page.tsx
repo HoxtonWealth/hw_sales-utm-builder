@@ -433,108 +433,111 @@ function RepostModal({
           </div>
         )}
 
-        {/* Divider */}
-        <div className="mx-5 mt-4 border-t border-stone-200" />
+        {/* UTM link builder — only for blog posts */}
+        {post.source === "blog" && (
+          <>
+            <div className="mx-5 mt-4 border-t border-stone-200" />
 
-        {/* UTM link builder */}
-        <div className="p-5">
-          <p className="text-sm font-semibold text-gray-900 mb-3">
-            Generate tracked link
-          </p>
+            <div className="p-5">
+              <p className="text-sm font-semibold text-gray-900 mb-3">
+                Generate tracked link
+              </p>
 
-          {/* Rep selector */}
-          <div ref={comboRef} className="relative">
-            <label className="block text-xs font-medium text-stone-500 mb-1">
-              Your name
-            </label>
-            <input
-              type="text"
-              value={selectedRep && !dropdownOpen ? selectedRep.name : search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setSelectedRep(null);
-                setDropdownOpen(true);
-              }}
-              onFocus={() => setDropdownOpen(true)}
-              placeholder="Start typing your name..."
-              className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-            {dropdownOpen && (
-              <div className="absolute z-20 mt-1 w-full rounded-md border border-stone-200 bg-white shadow-lg max-h-[180px] overflow-y-auto">
-                {filteredReps.length === 0 ? (
-                  <div className="px-3 py-2 text-sm text-stone-400">
-                    No matches
+              {/* Rep selector */}
+              <div ref={comboRef} className="relative">
+                <label className="block text-xs font-medium text-stone-500 mb-1">
+                  Your name
+                </label>
+                <input
+                  type="text"
+                  value={selectedRep && !dropdownOpen ? selectedRep.name : search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setSelectedRep(null);
+                    setDropdownOpen(true);
+                  }}
+                  onFocus={() => setDropdownOpen(true)}
+                  placeholder="Start typing your name..."
+                  className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                {dropdownOpen && (
+                  <div className="absolute z-20 mt-1 w-full rounded-md border border-stone-200 bg-white shadow-lg max-h-[180px] overflow-y-auto">
+                    {filteredReps.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-stone-400">
+                        No matches
+                      </div>
+                    ) : (
+                      filteredReps.map((rep) => (
+                        <button
+                          key={rep.name}
+                          type="button"
+                          onClick={() => {
+                            setSelectedRep(rep);
+                            setSearch(rep.name);
+                            setDropdownOpen(false);
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 focus:bg-blue-50 focus:outline-none"
+                        >
+                          {rep.name}
+                        </button>
+                      ))
+                    )}
                   </div>
-                ) : (
-                  filteredReps.map((rep) => (
-                    <button
-                      key={rep.name}
-                      type="button"
-                      onClick={() => {
-                        setSelectedRep(rep);
-                        setSearch(rep.name);
-                        setDropdownOpen(false);
-                      }}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 focus:bg-blue-50 focus:outline-none"
-                    >
-                      {rep.name}
-                    </button>
-                  ))
                 )}
               </div>
-            )}
-          </div>
 
-          {/* Channel toggle */}
-          <div className="mt-3">
-            <label className="block text-xs font-medium text-stone-500 mb-1">
-              Channel
-            </label>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setChannel("linkedin")}
-                className={`flex-1 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
-                  channel === "linkedin"
-                    ? "border-blue-500 bg-blue-50 text-blue-700"
-                    : "border-stone-300 bg-white text-stone-600 hover:bg-stone-50"
-                }`}
-              >
-                LinkedIn
-              </button>
-              <button
-                type="button"
-                onClick={() => setChannel("email")}
-                className={`flex-1 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
-                  channel === "email"
-                    ? "border-blue-500 bg-blue-50 text-blue-700"
-                    : "border-stone-300 bg-white text-stone-600 hover:bg-stone-50"
-                }`}
-              >
-                Email
-              </button>
-            </div>
-          </div>
-
-          {/* Generated UTM URL */}
-          {utmUrl && (
-            <div className="mt-3">
-              <div className="rounded-md bg-stone-50 p-2.5 text-xs font-mono break-all leading-relaxed text-stone-600">
-                {utmUrl}
+              {/* Channel toggle */}
+              <div className="mt-3">
+                <label className="block text-xs font-medium text-stone-500 mb-1">
+                  Channel
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setChannel("linkedin")}
+                    className={`flex-1 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
+                      channel === "linkedin"
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-stone-300 bg-white text-stone-600 hover:bg-stone-50"
+                    }`}
+                  >
+                    LinkedIn
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setChannel("email")}
+                    className={`flex-1 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
+                      channel === "email"
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-stone-300 bg-white text-stone-600 hover:bg-stone-50"
+                    }`}
+                  >
+                    Email
+                  </button>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={handleCopyLink}
-                className="mt-2 w-full rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 transition-colors"
-              >
-                {copied ? "Copied!" : "Copy tracked link"}
-              </button>
+
+              {/* Generated UTM URL */}
+              {utmUrl && (
+                <div className="mt-3">
+                  <div className="rounded-md bg-stone-50 p-2.5 text-xs font-mono break-all leading-relaxed text-stone-600">
+                    {utmUrl}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyLink}
+                    className="mt-2 w-full rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 transition-colors"
+                  >
+                    {copied ? "Copied!" : "Copy tracked link"}
+                  </button>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </>
+        )}
 
         {/* Divider */}
-        <div className="mx-5 border-t border-stone-200" />
+        <div className="mx-5 mt-4 border-t border-stone-200" />
 
         {/* AI generate */}
         <div className="p-5">
@@ -751,12 +754,6 @@ export default function ContentHubPage() {
           </div>
         )}
 
-        {/* Back link */}
-        <div className="mt-8 text-center">
-          <a href="/" className="text-xs text-stone-400 hover:text-stone-600">
-            &larr; UTM Builder
-          </a>
-        </div>
       </div>
 
       {/* Repost modal */}

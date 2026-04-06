@@ -241,14 +241,6 @@ export default function BuilderPage() {
           </div>
         )}
 
-        <div className="mt-8 flex justify-center gap-4">
-          <a href="/content-hub" className="text-xs text-gray-400 hover:text-gray-600">
-            Content Hub &rarr;
-          </a>
-          <a href="/admin" className="text-xs text-gray-400 hover:text-gray-600">
-            Admin
-          </a>
-        </div>
       </div>
     </div>
   );

@@ -170,11 +170,6 @@ export default function AdminPage() {
               </button>
             </form>
           </div>
-          <div className="mt-4 text-center">
-            <a href="/" className="text-xs text-gray-400 hover:text-gray-600">
-              ← Back to builder
-            </a>
-          </div>
         </div>
       </div>
     );
@@ -194,9 +189,6 @@ export default function AdminPage() {
             Sign out
           </button>
         </div>
-        <a href="/" className="text-xs text-gray-400 hover:text-gray-600">
-          ← Back to builder
-        </a>
 
         {dataLoading ? (
           <div className="mt-8 text-center text-gray-400">Loading...</div>
