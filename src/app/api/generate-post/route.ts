@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "anthropic/claude-haiku-4-5-20251001",
+        model: "anthropic/claude-haiku-4.5",
         max_tokens: 512,
         messages: [
           { role: "system", content: systemPrompt },
