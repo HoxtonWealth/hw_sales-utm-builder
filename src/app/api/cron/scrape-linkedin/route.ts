@@ -141,6 +141,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "No LI_ACCOUNTS configured" }, { status: 400 });
   }
 
+  // Posts older than this cutoff get pruned at the end of the run, so don't
+  // bother inserting them in the first place.
+  const retentionCutoffMs = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
   const results: Record<string, { added: number; errors: string[]; debug?: string }> = {};
 
   for (const username of accounts) {
@@ -193,11 +197,18 @@ export async function GET(request: NextRequest) {
           const contentType = String(post.contentType || "text");
 
           // Published date
-          const publishedAt = post.postedDateTimestamp
-            ? new Date(post.postedDateTimestamp).toISOString()
+          const publishedAtMs = post.postedDateTimestamp
+            ? Number(post.postedDateTimestamp)
             : post.postedDate
-              ? new Date(post.postedDate).toISOString()
-              : new Date().toISOString();
+              ? new Date(post.postedDate).getTime()
+              : Date.now();
+          const publishedAt = new Date(publishedAtMs).toISOString();
+
+          // Skip items already outside the retention window — they'd just get
+          // pruned at the end of the run, so don't waste an image download.
+          if (publishedAtMs < retentionCutoffMs) {
+            continue;
+          }
 
           // Image — download to Supabase Storage
           const bestImageUrl = pickBestImage(post);

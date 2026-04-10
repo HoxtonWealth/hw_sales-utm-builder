@@ -111,6 +111,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "No IG_ACCOUNTS configured" }, { status: 400 });
   }
 
+  // Posts older than this cutoff get pruned at the end of the run, so don't
+  // bother inserting them in the first place.
+  const retentionCutoffMs = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
   const results: Record<string, { added: number; errors: string[]; debug?: string }> = {};
 
   for (const username of accounts) {
@@ -240,9 +244,16 @@ export async function GET(request: NextRequest) {
           const cdnUrl = String(item?.display_url || item?.thumbnail_src || "");
 
           const takenAt = item?.taken_at_timestamp || item?.taken_at;
-          const publishedAt = takenAt
-            ? new Date(typeof takenAt === "number" ? takenAt * 1000 : takenAt).toISOString()
-            : new Date().toISOString();
+          const publishedAtMs = takenAt
+            ? (typeof takenAt === "number" ? takenAt * 1000 : new Date(takenAt).getTime())
+            : Date.now();
+          const publishedAt = new Date(publishedAtMs).toISOString();
+
+          // Skip items already outside the retention window — they'd just get
+          // pruned at the end of the run, so don't waste an image download.
+          if (publishedAtMs < retentionCutoffMs) {
+            continue;
+          }
 
           // Try Supabase Storage upload, fall back to base64 preview, then CDN URL
           let finalImageUrl: string | null = null;
