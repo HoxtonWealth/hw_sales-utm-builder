@@ -111,9 +111,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "No IG_ACCOUNTS configured" }, { status: 400 });
   }
 
-  // Posts older than this cutoff get pruned at the end of the run, so don't
-  // bother inserting them in the first place.
+  // Single retention cutoff used both for the per-item pre-filter and the
+  // trailing prune, so a borderline post can't be inserted in the per-item
+  // loop and then deleted a few seconds later by a newer prune cutoff.
   const retentionCutoffMs = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  const retentionCutoffIso = new Date(retentionCutoffMs).toISOString();
 
   const results: Record<string, { added: number; errors: string[]; debug?: string }> = {};
 
@@ -163,15 +165,22 @@ export async function GET(request: NextRequest) {
         const userKeys = p?.user ? Object.keys(p.user) : [];
         accountResult.debug += ` | data keys: [${dataKeys.join(", ")}] | user keys: [${userKeys.join(", ")}]`;
 
-        // Try /reels endpoint as fallback (we know it exists)
-        try {
-          const reelsResponse = await rapidApiFetch("/reels", { user_id: userId || username });
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const r = reelsResponse as Record<string, any>;
-          const reelsKeys = Object.keys(r);
-          accountResult.debug += ` | reels keys: [${reelsKeys.join(", ")}]`;
-        } catch (reelsErr) {
-          accountResult.debug += ` | reels err: ${reelsErr instanceof Error ? reelsErr.message.slice(0, 100) : "unknown"}`;
+        // Try /reels endpoint as fallback. The param is `id`, not `user_id` —
+        // using `user_id` returns "Invalid Request Parameters" from the API.
+        // We only have a user_id here if /profile succeeded and ig_accounts
+        // was populated; fall back to username as a no-op probe otherwise.
+        if (userId) {
+          try {
+            const reelsResponse = await rapidApiFetch("/reels", { id: userId });
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const r = reelsResponse as Record<string, any>;
+            const reelsKeys = Object.keys(r);
+            accountResult.debug += ` | reels keys: [${reelsKeys.join(", ")}]`;
+          } catch (reelsErr) {
+            accountResult.debug += ` | reels err: ${reelsErr instanceof Error ? reelsErr.message.slice(0, 100) : "unknown"}`;
+          }
+        } else {
+          accountResult.debug += ` | reels skipped (no user_id)`;
         }
 
         accountResult.errors.push("Could not find media items in profile response");
@@ -321,13 +330,13 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Prune posts older than the retention window
-  const cutoffIso = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  // Prune posts older than the retention window (uses the cutoff computed
+  // at the top of the request so it matches the per-item pre-filter).
   const { count: prunedCount, error: pruneErr } = await supabase
     .from("posts")
     .delete({ count: "exact" })
     .eq("source", "instagram")
-    .lt("published_at", cutoffIso);
+    .lt("published_at", retentionCutoffIso);
 
   const totalAdded = Object.values(results).reduce((sum, r) => sum + r.added, 0);
   await supabase.from("scrape_log").insert({
@@ -336,7 +345,7 @@ export async function GET(request: NextRequest) {
     metadata: {
       ...results,
       _pruned: prunedCount ?? 0,
-      _prune_cutoff: cutoffIso,
+      _prune_cutoff: retentionCutoffIso,
       _prune_error: pruneErr?.message ?? null,
       _retention_days: RETENTION_DAYS,
     },

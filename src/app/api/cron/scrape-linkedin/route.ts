@@ -141,9 +141,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "No LI_ACCOUNTS configured" }, { status: 400 });
   }
 
-  // Posts older than this cutoff get pruned at the end of the run, so don't
-  // bother inserting them in the first place.
+  // Single retention cutoff used both for the per-item pre-filter and the
+  // trailing prune, so a borderline post can't be inserted in the per-item
+  // loop and then deleted a few seconds later by a newer prune cutoff.
   const retentionCutoffMs = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  const retentionCutoffIso = new Date(retentionCutoffMs).toISOString();
 
   const results: Record<string, { added: number; errors: string[]; debug?: string }> = {};
 
@@ -269,13 +271,13 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Prune posts older than the retention window
-  const cutoffIso = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  // Prune posts older than the retention window (uses the cutoff computed
+  // at the top of the request so it matches the per-item pre-filter).
   const { count: prunedCount, error: pruneErr } = await supabase
     .from("posts")
     .delete({ count: "exact" })
     .eq("source", "linkedin")
-    .lt("published_at", cutoffIso);
+    .lt("published_at", retentionCutoffIso);
 
   const totalAdded = Object.values(results).reduce((sum, r) => sum + r.added, 0);
   await supabase.from("scrape_log").insert({
@@ -284,7 +286,7 @@ export async function GET(request: NextRequest) {
     metadata: {
       ...results,
       _pruned: prunedCount ?? 0,
-      _prune_cutoff: cutoffIso,
+      _prune_cutoff: retentionCutoffIso,
       _prune_error: pruneErr?.message ?? null,
       _retention_days: RETENTION_DAYS,
     },
