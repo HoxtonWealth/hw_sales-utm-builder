@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const RAPIDAPI_HOST = "linkedin-data-api.p.rapidapi.com";
+const RETENTION_DAYS = 30;
 
 function isAuthorized(request: NextRequest): boolean {
   const { searchParams } = new URL(request.url);
@@ -140,12 +141,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "No LI_ACCOUNTS configured" }, { status: 400 });
   }
 
-  // Delete all existing LinkedIn posts for clean re-sync
-  const { error: deleteErr } = await supabase.from("posts").delete().eq("source", "linkedin");
-  if (deleteErr) {
-    return NextResponse.json({ error: `Cleanup failed: ${deleteErr.message}` }, { status: 500 });
-  }
-
   const results: Record<string, { added: number; errors: string[]; debug?: string }> = {};
 
   for (const username of accounts) {
@@ -171,12 +166,28 @@ export async function GET(request: NextRequest) {
 
       accountResult.debug = `total=${r.total}, posts_in_page=${posts.length}`;
 
+      // Get existing URNs to skip already-scraped posts (avoids re-downloading images)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const urns = (posts as any[])
+        .map((p) => String(p?.urn || ""))
+        .filter(Boolean);
+
+      const { data: existing } = urns.length
+        ? await supabase
+            .from("posts")
+            .select("source_id")
+            .eq("source", "linkedin")
+            .in("source_id", urns)
+        : { data: [] };
+
+      const existingIds = new Set((existing ?? []).map((e) => e.source_id));
+
       for (const post of posts) {
         // Skip reposts — only capture original content
         if (post.reposted) continue;
 
         const urn = String(post.urn || "");
-        if (!urn) continue;
+        if (!urn || existingIds.has(urn)) continue;
 
         try {
           const caption = String(post.text || "").slice(0, 2000);
@@ -223,10 +234,12 @@ export async function GET(request: NextRequest) {
             },
           };
 
-          const { error: insertError } = await supabase.from("posts").insert(insertData);
+          const { error: insertError } = await supabase
+            .from("posts")
+            .upsert(insertData, { onConflict: "source_id" });
 
           if (insertError) {
-            accountResult.errors.push(`Insert ${urn}: ${insertError.message}`);
+            accountResult.errors.push(`Upsert ${urn}: ${insertError.message}`);
           } else {
             accountResult.added++;
           }
@@ -241,12 +254,31 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // Prune posts older than the retention window
+  const cutoffIso = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const { count: prunedCount, error: pruneErr } = await supabase
+    .from("posts")
+    .delete({ count: "exact" })
+    .eq("source", "linkedin")
+    .lt("published_at", cutoffIso);
+
   const totalAdded = Object.values(results).reduce((sum, r) => sum + r.added, 0);
   await supabase.from("scrape_log").insert({
     source: "linkedin",
     items_added: totalAdded,
-    metadata: results,
+    metadata: {
+      ...results,
+      _pruned: prunedCount ?? 0,
+      _prune_cutoff: cutoffIso,
+      _prune_error: pruneErr?.message ?? null,
+      _retention_days: RETENTION_DAYS,
+    },
   });
 
-  return NextResponse.json({ success: true, results });
+  return NextResponse.json({
+    success: true,
+    results,
+    pruned: prunedCount ?? 0,
+    retention_days: RETENTION_DAYS,
+  });
 }

@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const RAPIDAPI_HOST = "instagram-looter2.p.rapidapi.com";
+const RETENTION_DAYS = 30;
 
 function isAuthorized(request: NextRequest): boolean {
   const { searchParams } = new URL(request.url);
@@ -108,12 +109,6 @@ export async function GET(request: NextRequest) {
 
   if (accounts.length === 0) {
     return NextResponse.json({ error: "No IG_ACCOUNTS configured" }, { status: 400 });
-  }
-
-  // Delete all existing Instagram posts first for clean re-sync
-  const { error: deleteErr } = await supabase.from("posts").delete().eq("source", "instagram");
-  if (deleteErr) {
-    return NextResponse.json({ error: `Cleanup failed: ${deleteErr.message}` }, { status: 500 });
   }
 
   const results: Record<string, { added: number; errors: string[]; debug?: string }> = {};
@@ -282,10 +277,12 @@ export async function GET(request: NextRequest) {
               ` | INSERT_DATA: caption_len=${insertData.caption.length}, caption_start="${insertData.caption.slice(0, 30)}", img=${insertData.image_url ? "YES" : "NULL"}`;
           }
 
-          const { error: insertError } = await supabase.from("posts").insert(insertData);
+          const { error: insertError } = await supabase
+            .from("posts")
+            .upsert(insertData, { onConflict: "source_id" });
 
           if (insertError) {
-            accountResult.errors.push(`Insert ${shortcode}: ${insertError.message}`);
+            accountResult.errors.push(`Upsert ${shortcode}: ${insertError.message}`);
           } else {
             accountResult.added++;
           }
@@ -302,12 +299,31 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // Prune posts older than the retention window
+  const cutoffIso = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const { count: prunedCount, error: pruneErr } = await supabase
+    .from("posts")
+    .delete({ count: "exact" })
+    .eq("source", "instagram")
+    .lt("published_at", cutoffIso);
+
   const totalAdded = Object.values(results).reduce((sum, r) => sum + r.added, 0);
   await supabase.from("scrape_log").insert({
     source: "instagram",
     items_added: totalAdded,
-    metadata: results,
+    metadata: {
+      ...results,
+      _pruned: prunedCount ?? 0,
+      _prune_cutoff: cutoffIso,
+      _prune_error: pruneErr?.message ?? null,
+      _retention_days: RETENTION_DAYS,
+    },
   });
 
-  return NextResponse.json({ success: true, results });
+  return NextResponse.json({
+    success: true,
+    results,
+    pruned: prunedCount ?? 0,
+    retention_days: RETENTION_DAYS,
+  });
 }
