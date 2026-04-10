@@ -170,11 +170,12 @@ export async function GET(request: NextRequest) {
 
       accountResult.debug = `total=${r.total}, posts_in_page=${posts.length}`;
 
-      // Get existing source_ids for this account so we can skip already-stored
-      // posts and avoid re-downloading their images on every run.
+      // Skip only posts that already have a known-good storage URL. Posts
+      // with NULL/CDN image_urls are re-processed so failed image uploads
+      // from a previous run get retried automatically.
       const { data: existing, error: existingErr } = await supabase
         .from("posts")
-        .select("source_id")
+        .select("source_id, image_url")
         .eq("source", "linkedin")
         .eq("account", username);
 
@@ -182,15 +183,19 @@ export async function GET(request: NextRequest) {
         accountResult.errors.push(`dedupe query: ${existingErr.message}`);
       }
 
-      const existingIds = new Set((existing ?? []).map((e) => e.source_id));
-      accountResult.debug += ` | existing_in_db=${existingIds.size}`;
+      const goodIds = new Set(
+        (existing ?? [])
+          .filter((e) => (e.image_url || "").includes("/storage/v1/object/public/post-images/"))
+          .map((e) => e.source_id)
+      );
+      accountResult.debug += ` | total_in_db=${(existing ?? []).length} | with_storage=${goodIds.size}`;
 
       for (const post of posts) {
         // Skip reposts — only capture original content
         if (post.reposted) continue;
 
         const urn = String(post.urn || "");
-        if (!urn || existingIds.has(urn)) continue;
+        if (!urn || goodIds.has(urn)) continue;
 
         try {
           const caption = String(post.text || "").slice(0, 2000);

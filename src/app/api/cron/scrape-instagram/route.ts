@@ -207,9 +207,12 @@ export async function GET(request: NextRequest) {
         continue;
       }
 
+      // Skip only posts that already have a known-good storage URL. Posts
+      // with NULL/CDN/base64 image_urls are re-processed so failed image
+      // uploads from a previous run get retried automatically.
       const { data: existing, error: existingErr } = await supabase
         .from("posts")
-        .select("source_id")
+        .select("source_id, image_url")
         .eq("source", "instagram")
         .eq("account", username);
 
@@ -217,13 +220,17 @@ export async function GET(request: NextRequest) {
         accountResult.errors.push(`dedupe query: ${existingErr.message}`);
       }
 
-      const existingIds = new Set((existing ?? []).map((e) => e.source_id));
+      const goodIds = new Set(
+        (existing ?? [])
+          .filter((e) => (e.image_url || "").includes("/storage/v1/object/public/post-images/"))
+          .map((e) => e.source_id)
+      );
       accountResult.debug = (accountResult.debug || "") +
-        ` | existing_in_db=${existingIds.size}`;
+        ` | total_in_db=${(existing ?? []).length} | with_storage=${goodIds.size}`;
 
       for (const item of items) {
         const shortcode = String(item.code || item.shortcode || "");
-        if (!shortcode || existingIds.has(shortcode)) continue;
+        if (!shortcode || goodIds.has(shortcode)) continue;
 
         try {
           // Extract caption from graph API format (always use item, it has the data)
@@ -239,8 +246,8 @@ export async function GET(request: NextRequest) {
               ` | CAPTION_DEBUG: edges=${JSON.stringify(captionEdges).slice(0, 100)}, result="${String(caption).slice(0, 50)}"`;
           }
 
-          // Use media_preview (base64 thumbnail) as data URI — CDN URLs don't work cross-origin
-          const mediaPreview = item?.media_preview ? `data:image/jpeg;base64,${item.media_preview}` : null;
+          // NOTE: item.media_preview is a tiny blur-preview blob (~150-400 chars
+          // base64), NOT a real thumbnail. Don't use it as image_url.
           const cdnUrl = String(item?.display_url || item?.thumbnail_src || "");
 
           const takenAt = item?.taken_at_timestamp || item?.taken_at;
@@ -255,17 +262,14 @@ export async function GET(request: NextRequest) {
             continue;
           }
 
-          // Try Supabase Storage upload, fall back to base64 preview, then CDN URL
+          // Try Supabase Storage upload; fall back to the raw CDN URL if it
+          // fails. CDN URLs are signed and expire in ~hours, so the dedupe-skip
+          // above ignores rows without storage URLs and lets the next cron run
+          // retry the upload until it sticks.
           let finalImageUrl: string | null = null;
           if (cdnUrl) {
             const stored = await downloadToStorage(cdnUrl, "post-images", "instagram", shortcode, "image");
-            if (stored) {
-              finalImageUrl = stored;
-            }
-          }
-          if (!finalImageUrl) {
-            // Use base64 media_preview as reliable fallback (works everywhere)
-            finalImageUrl = mediaPreview || cdnUrl || null;
+            finalImageUrl = stored || cdnUrl;
           }
 
           // Handle video posts — store CDN URL directly (no storage upload to avoid timeout/size limits)
