@@ -166,21 +166,20 @@ export async function GET(request: NextRequest) {
 
       accountResult.debug = `total=${r.total}, posts_in_page=${posts.length}`;
 
-      // Get existing URNs to skip already-scraped posts (avoids re-downloading images)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const urns = (posts as any[])
-        .map((p) => String(p?.urn || ""))
-        .filter(Boolean);
+      // Get existing source_ids for this account so we can skip already-stored
+      // posts and avoid re-downloading their images on every run.
+      const { data: existing, error: existingErr } = await supabase
+        .from("posts")
+        .select("source_id")
+        .eq("source", "linkedin")
+        .eq("account", username);
 
-      const { data: existing } = urns.length
-        ? await supabase
-            .from("posts")
-            .select("source_id")
-            .eq("source", "linkedin")
-            .in("source_id", urns)
-        : { data: [] };
+      if (existingErr) {
+        accountResult.errors.push(`dedupe query: ${existingErr.message}`);
+      }
 
       const existingIds = new Set((existing ?? []).map((e) => e.source_id));
+      accountResult.debug += ` | existing_in_db=${existingIds.size}`;
 
       for (const post of posts) {
         // Skip reposts — only capture original content

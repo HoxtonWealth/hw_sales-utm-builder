@@ -192,7 +192,8 @@ export async function GET(request: NextRequest) {
           ` | media_preview: ${first?.media_preview ? "YES(" + String(first.media_preview).length + " chars)" : "NO"}`;
       }
 
-      // Get existing source_ids to filter duplicates
+      // Get existing source_ids for this account so we can skip already-stored
+      // posts and avoid re-downloading their images on every run.
       const shortcodes = items
         .map((item) => String(item.code || item.shortcode || ""))
         .filter(Boolean);
@@ -202,13 +203,19 @@ export async function GET(request: NextRequest) {
         continue;
       }
 
-      const { data: existing } = await supabase
+      const { data: existing, error: existingErr } = await supabase
         .from("posts")
         .select("source_id")
         .eq("source", "instagram")
-        .in("source_id", shortcodes);
+        .eq("account", username);
+
+      if (existingErr) {
+        accountResult.errors.push(`dedupe query: ${existingErr.message}`);
+      }
 
       const existingIds = new Set((existing ?? []).map((e) => e.source_id));
+      accountResult.debug = (accountResult.debug || "") +
+        ` | existing_in_db=${existingIds.size}`;
 
       for (const item of items) {
         const shortcode = String(item.code || item.shortcode || "");
