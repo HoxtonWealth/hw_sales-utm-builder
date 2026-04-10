@@ -7,7 +7,11 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const source = searchParams.get("source");
-    const limit = parseInt(searchParams.get("limit") || "50", 10);
+    // Default high enough to return everything within the 30-day retention
+    // window across all sources. The Content Hub fetches once and filters
+    // client-side, so a low default (e.g. 50) was crowding out Instagram/
+    // LinkedIn posts when blog posts dominate the global date ordering.
+    const limit = parseInt(searchParams.get("limit") || "500", 10);
     const offset = parseInt(searchParams.get("offset") || "0", 10);
     const account = searchParams.get("account");
 
