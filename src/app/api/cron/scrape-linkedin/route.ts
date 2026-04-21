@@ -4,7 +4,7 @@ import { getSupabase } from "@/lib/supabase";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const RAPIDAPI_HOST = "linkedin-data-api.p.rapidapi.com";
+const HARVEST_HOST = "api.harvest-api.com";
 const RETENTION_DAYS = 30;
 
 function isAuthorized(request: NextRequest): boolean {
@@ -19,20 +19,19 @@ function isAuthorized(request: NextRequest): boolean {
   return false;
 }
 
-async function rapidApiFetch(endpoint: string, params: Record<string, string>) {
-  const url = new URL(`https://${RAPIDAPI_HOST}${endpoint}`);
+async function harvestFetch(endpoint: string, params: Record<string, string>) {
+  const url = new URL(`https://${HARVEST_HOST}${endpoint}`);
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
 
   const res = await fetch(url.toString(), {
     headers: {
-      "x-rapidapi-host": RAPIDAPI_HOST,
-      "x-rapidapi-key": process.env.RAPIDAPI_KEY!,
+      "X-API-Key": process.env.HARVEST_API_KEY!,
     },
   });
 
   const text = await res.text();
   if (!res.ok) {
-    throw new Error(`RapidAPI ${endpoint} returned ${res.status}: ${text}`);
+    throw new Error(`Harvest ${endpoint} returned ${res.status}: ${text}`);
   }
 
   return JSON.parse(text);
@@ -90,36 +89,24 @@ async function downloadToStorage(
   }
 }
 
-// Pick the best image URL from the images array (highest resolution first image)
+// Harvest returns postImages as a flat array of {url, width, height, expiresAt}.
+// Pick the highest-width image; fall back to article preview or video thumbnail.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function pickBestImage(post: Record<string, any>): string | null {
-  // images is grouped by image: images[0] = array of resolutions for first image
-  const grouped = post.images;
-  if (Array.isArray(grouped) && grouped.length > 0 && Array.isArray(grouped[0])) {
-    // Pick highest-width from first image
-    const sorted = [...grouped[0]]
-      .filter((img) => img?.url && img?.width)
+  const images = post.postImages;
+  if (Array.isArray(images) && images.length > 0) {
+    const sorted = [...images]
+      .filter((img) => img?.url)
       .sort((a, b) => (b.width || 0) - (a.width || 0));
     if (sorted.length > 0) return sorted[0].url;
   }
 
-  // Fallback to flat image array
-  const flat = post.image;
-  if (Array.isArray(flat) && flat.length > 0) {
-    const sorted = [...flat]
-      .filter((img) => img?.url && img?.width)
-      .sort((a, b) => (b.width || 0) - (a.width || 0));
-    if (sorted.length > 0) return sorted[0].url;
+  if (post.article?.image?.url) {
+    return post.article.image.url;
   }
 
-  // Article thumbnail
-  if (post.article?.smallImage?.[0]?.url) {
-    return post.article.smallImage[0].url;
-  }
-
-  // Video poster
-  if (Array.isArray(post.video) && post.video[0]?.poster) {
-    return post.video[0].poster;
+  if (post.postVideo?.thumbnailUrl) {
+    return post.postVideo.thumbnailUrl;
   }
 
   return null;
@@ -154,23 +141,27 @@ export async function GET(request: NextRequest) {
     results[username] = accountResult;
 
     try {
-      const response = await rapidApiFetch("/get-company-posts", { username });
+      const response = await harvestFetch("/linkedin/company-posts", {
+        companyUniversalName: username,
+        postedLimit: "month",
+        page: "1",
+      });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const r = response as Record<string, any>;
 
-      if (!r.success) {
-        accountResult.errors.push(`API returned success=false: ${r.message || "unknown"}`);
+      if (r.error) {
+        accountResult.errors.push(`API error: ${typeof r.error === "string" ? r.error : JSON.stringify(r.error)}`);
         continue;
       }
 
-      const posts = r.data;
-      if (!Array.isArray(posts) || posts.length === 0) {
+      const posts = Array.isArray(r.elements) ? r.elements : [];
+      if (posts.length === 0) {
         accountResult.errors.push("No posts returned from API");
         continue;
       }
 
-      accountResult.debug = `total=${r.total}, posts_in_page=${posts.length}`;
+      accountResult.debug = `total=${r.pagination?.totalElements ?? "?"}, posts_in_page=${posts.length}`;
 
       // Skip only posts that already have a known-good storage URL. Posts
       // with NULL/CDN image_urls are re-processed so failed image uploads
@@ -194,20 +185,18 @@ export async function GET(request: NextRequest) {
 
       for (const post of posts) {
         // Skip reposts — only capture original content
-        if (post.reposted) continue;
+        if (post.repostId || post.repostedBy) continue;
 
-        const urn = String(post.urn || "");
-        if (!urn || goodIds.has(urn)) continue;
+        const id = String(post.id || "");
+        if (!id || goodIds.has(id)) continue;
 
         try {
-          const caption = String(post.text || "").slice(0, 2000);
-          const contentType = String(post.contentType || "text");
+          const caption = String(post.content || "").slice(0, 2000);
 
-          // Published date
-          const publishedAtMs = post.postedDateTimestamp
-            ? Number(post.postedDateTimestamp)
-            : post.postedDate
-              ? new Date(post.postedDate).getTime()
+          const publishedAtMs = post.postedAt?.timestamp
+            ? Number(post.postedAt.timestamp)
+            : post.postedAt?.date
+              ? new Date(post.postedAt.date).getTime()
               : Date.now();
           const publishedAt = new Date(publishedAtMs).toISOString();
 
@@ -217,23 +206,31 @@ export async function GET(request: NextRequest) {
             continue;
           }
 
-          // Image — download to Supabase Storage
+          // Derive a content type from which fields are populated (Harvest
+          // doesn't expose an explicit enum the way the old API did).
+          const hasVideo = !!post.postVideo?.videoUrl;
+          const hasArticle = !!post.article;
+          const hasImage = Array.isArray(post.postImages) && post.postImages.length > 0;
+          const contentType = hasVideo
+            ? "video"
+            : hasArticle
+              ? "article"
+              : hasImage
+                ? "image"
+                : "text";
+
           const bestImageUrl = pickBestImage(post);
           let finalImageUrl: string | null = null;
           if (bestImageUrl) {
-            const stored = await downloadToStorage(bestImageUrl, "post-images", "linkedin", urn);
+            const stored = await downloadToStorage(bestImageUrl, "post-images", "linkedin", id);
             finalImageUrl = stored || bestImageUrl;
           }
 
-          // Video
-          const finalVideoUrl: string | null =
-            contentType === "linkedInVideo" && Array.isArray(post.video) && post.video[0]?.url
-              ? post.video[0].url
-              : null;
+          const finalVideoUrl: string | null = hasVideo ? post.postVideo.videoUrl : null;
 
           const insertData = {
             source: "linkedin" as const,
-            source_id: urn,
+            source_id: id,
             account: username,
             caption,
             image_url: finalImageUrl,
@@ -241,13 +238,11 @@ export async function GET(request: NextRequest) {
             published_at: publishedAt,
             metadata: {
               content_type: contentType,
-              reactions: post.totalReactionCount || 0,
-              likes: post.likeCount || 0,
-              comments: post.commentsCount || 0,
-              reposts: post.repostsCount || 0,
-              post_url: post.postUrl || null,
-              share_url: post.shareUrl || null,
-              article: contentType === "article" ? post.article || null : null,
+              likes: post.likes ?? post.engagement?.likes ?? 0,
+              comments: post.comments ?? post.engagement?.comments ?? 0,
+              shares: post.shares ?? post.engagement?.shares ?? 0,
+              post_url: post.linkedinUrl || null,
+              article: hasArticle ? post.article : null,
             },
           };
 
@@ -256,13 +251,13 @@ export async function GET(request: NextRequest) {
             .upsert(insertData, { onConflict: "source_id" });
 
           if (insertError) {
-            accountResult.errors.push(`Upsert ${urn}: ${insertError.message}`);
+            accountResult.errors.push(`Upsert ${id}: ${insertError.message}`);
           } else {
             accountResult.added++;
           }
         } catch (postErr) {
           accountResult.errors.push(
-            `Post ${urn}: ${postErr instanceof Error ? postErr.message : "unknown error"}`
+            `Post ${post?.id ?? "?"}: ${postErr instanceof Error ? postErr.message : "unknown error"}`
           );
         }
       }
