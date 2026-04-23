@@ -39,6 +39,10 @@ scripts/
 | `ADMIN_PASSWORD` | Set manually in Vercel env vars |
 | `SHORT_IO_API_KEY` | Set manually in Vercel env vars |
 | `SHORT_IO_DOMAIN` | Set manually in Vercel env vars |
+| `ORTTO_API_KEY` | Set manually in Vercel env vars (Ortto CDP > Data sources > Custom API) |
+| `ORTTO_BASE_URL` | Optional override; defaults to `https://api.eu.ap3api.com` |
+| `ORTTO_EMAIL_NAME_INCLUDES` | Comma-separated keywords; only campaign names containing one match get ingested |
+| `ORTTO_TIMEZONE` | Optional override; defaults to `Europe/London` |
 
 ## Key Commands
 

@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/scrape-blog?secret=${CRON_SECRET}",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/scrape-ortto?secret=${CRON_SECRET}",
+      "schedule": "0 7 * * *"
     }
   ]
 }
