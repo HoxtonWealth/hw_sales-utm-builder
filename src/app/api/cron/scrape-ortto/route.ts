@@ -100,6 +100,7 @@ export async function GET(request: NextRequest) {
   const errors: string[] = [];
   const skipped: string[] = [];
   let added = 0;
+  const debug: Record<string, unknown> = {};
 
   try {
     const keywords = parseKeywords(process.env.ORTTO_EMAIL_NAME_INCLUDES);
@@ -113,6 +114,21 @@ export async function GET(request: NextRequest) {
     );
     const matched = filterByName(sentEmails, keywords);
     const candidates = flattenAbVariants(matched);
+
+    debug.window = window;
+    debug.keywords = keywords;
+    debug.campaigns_total = campaigns.length;
+    debug.states_seen = Array.from(new Set(campaigns.map((c) => c.state)));
+    debug.types_seen = Array.from(new Set(campaigns.map((c) => c.type)));
+    debug.sent_email_count = sentEmails.length;
+    debug.matched_count = matched.length;
+    debug.candidates_count = candidates.length;
+    debug.sample_sent_names = sentEmails.slice(0, 10).map((c) => c.name);
+    debug.sample_all_names = campaigns.slice(0, 10).map((c) => ({
+      name: c.name,
+      type: c.type,
+      state: c.state,
+    }));
 
     if (candidates.length > 0) {
       const assetIds = candidates.map((c) => c.asset_id);
@@ -207,5 +223,6 @@ export async function GET(request: NextRequest) {
     pruned: prunedCount ?? 0,
     errors,
     skipped,
+    debug,
   });
 }
