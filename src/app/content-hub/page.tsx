@@ -54,6 +54,16 @@ function truncate(text: string, max: number): string {
   return text.slice(0, max).trimEnd() + "...";
 }
 
+function num(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}
+
+function formatCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}m`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
+  return String(n);
+}
+
 async function handleDownload(url: string, filename: string) {
   try {
     const res = await fetch(url);
@@ -161,6 +171,63 @@ function SparkleIcon() {
       strokeLinejoin="round"
     >
       <path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z" />
+    </svg>
+  );
+}
+
+function HeartIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="11"
+      height="11"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+    </svg>
+  );
+}
+
+function CommentIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="11"
+      height="11"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
+function RepostIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="11"
+      height="11"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="17 1 21 5 17 9" />
+      <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+      <polyline points="7 23 3 19 7 15" />
+      <path d="M21 13v2a4 4 0 0 1-4 4H3" />
     </svg>
   );
 }
@@ -616,6 +683,17 @@ export default function ContentHubPage() {
           ? posts.filter((p) => p.source === "linkedin" && p.account === filter.replace("linkedin:", ""))
           : posts.filter((p) => p.source === "instagram" && p.account === filter.replace("instagram:", ""));
 
+  const liPostsInView = filteredPosts.filter((p) => p.source === "linkedin");
+  const liTotals = liPostsInView.reduce(
+    (acc, p) => {
+      acc.likes += num(p.metadata?.likes);
+      acc.comments += num(p.metadata?.comments);
+      acc.shares += num(p.metadata?.shares);
+      return acc;
+    },
+    { likes: 0, comments: 0, shares: 0 }
+  );
+
   if (loading) {
     return (
       <div className="min-h-screen bg-stone-50 flex items-center justify-center">
@@ -657,6 +735,27 @@ export default function ContentHubPage() {
             </button>
           ))}
         </div>
+
+        {/* LinkedIn analytics summary */}
+        {liPostsInView.length > 0 && (
+          <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-sky-100 bg-sky-50 px-4 py-2.5 text-sm">
+            <span className="font-medium text-sky-900">
+              LinkedIn · {liPostsInView.length} {liPostsInView.length === 1 ? "post" : "posts"}
+            </span>
+            <span className="flex items-center gap-1.5 text-sky-800">
+              <HeartIcon />
+              {formatCount(liTotals.likes)} reactions
+            </span>
+            <span className="flex items-center gap-1.5 text-sky-800">
+              <CommentIcon />
+              {formatCount(liTotals.comments)} comments
+            </span>
+            <span className="flex items-center gap-1.5 text-sky-800">
+              <RepostIcon />
+              {formatCount(liTotals.shares)} reposts
+            </span>
+          </div>
+        )}
 
         {/* Empty state */}
         {filteredPosts.length === 0 ? (
@@ -720,6 +819,24 @@ export default function ContentHubPage() {
                     </p>
                   )}
                 </div>
+
+                {/* LinkedIn engagement */}
+                {post.source === "linkedin" && (
+                  <div className="flex items-center gap-3 border-t border-stone-100 px-3 py-1.5 text-[10px] text-stone-500">
+                    <span className="flex items-center gap-1">
+                      <HeartIcon />
+                      {formatCount(num(post.metadata?.likes))}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <CommentIcon />
+                      {formatCount(num(post.metadata?.comments))}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <RepostIcon />
+                      {formatCount(num(post.metadata?.shares))}
+                    </span>
+                  </div>
+                )}
 
                 {/* Footer */}
                 <div className="flex items-center justify-between border-t border-stone-200 px-3 py-2">
