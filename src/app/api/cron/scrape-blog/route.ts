@@ -4,6 +4,10 @@ import { getSupabase } from "@/lib/supabase";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+const RETENTION_DAYS = 30;
+const PROCESS_LIMIT = 50;
+const PRUNE_SAFETY_MIN = 3;
+
 function isAuthorized(request: NextRequest): boolean {
   const { searchParams } = new URL(request.url);
   const secret = searchParams.get("secret");
@@ -83,7 +87,12 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = getSupabase();
+  const cutoff = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000);
   let added = 0;
+  let pruned = 0;
+  let skippedStale = 0;
+  let skippedNoDate = 0;
+  const validSlugs = new Set<string>();
   const errors: string[] = [];
 
   try {
@@ -100,26 +109,10 @@ export async function GET(request: NextRequest) {
     const locMatches = xml.match(/<loc>([^<]+)<\/loc>/g) || [];
     const blogUrls = locMatches
       .map((loc) => loc.replace(/<\/?loc>/g, ""))
-      .filter((url) => url.includes("/blog/"));
+      .filter((url) => url.includes("/blog/"))
+      .slice(0, PROCESS_LIMIT);
 
-    const slugs = blogUrls.map(extractSlug).filter(Boolean);
-
-    const { data: existingPosts } = await supabase
-      .from("posts")
-      .select("source_id")
-      .eq("source", "blog")
-      .in("source_id", slugs);
-
-    const existingSlugs = new Set((existingPosts ?? []).map((p) => p.source_id));
-
-    const newUrls = blogUrls.filter((url) => {
-      const slug = extractSlug(url);
-      return slug && !existingSlugs.has(slug);
-    });
-
-    const toProcess = newUrls.slice(0, 10);
-
-    for (const articleUrl of toProcess) {
+    for (const articleUrl of blogUrls) {
       const slug = extractSlug(articleUrl);
       if (!slug) continue;
 
@@ -132,42 +125,87 @@ export async function GET(request: NextRequest) {
 
         const html = await pageRes.text();
 
+        const dateStr =
+          extractMetaContent(html, "article:published_time") ||
+          extractMetaContent(html, "article:modified_time");
+
+        if (!dateStr) {
+          skippedNoDate++;
+          continue;
+        }
+
+        const publishedAt = new Date(dateStr);
+        if (isNaN(publishedAt.getTime())) {
+          errors.push(`Bad date for ${slug}: ${dateStr}`);
+          continue;
+        }
+
+        if (publishedAt < cutoff) {
+          skippedStale++;
+          continue;
+        }
+
         const title = extractMetaContent(html, "og:title") || slug;
         const description = extractMetaContent(html, "og:description") || "";
         const ogImage = extractMetaContent(html, "og:image") || "";
-        const publishedTime = extractMetaContent(html, "article:published_time");
-
-        const publishedAt = publishedTime
-          ? new Date(publishedTime).toISOString()
-          : new Date().toISOString();
 
         let storedImageUrl: string | null = null;
         if (ogImage) {
           storedImageUrl = await downloadImageToStorage(ogImage, "blog", slug);
         }
 
-        const { error: insertError } = await supabase.from("posts").insert({
-          source: "blog",
-          source_id: slug,
-          account: "hoxtonwealth.com",
-          caption: description.slice(0, 2000),
-          image_url: storedImageUrl || ogImage || null,
-          published_at: publishedAt,
-          metadata: {
-            title,
-            url: articleUrl,
+        const { error: upsertError } = await supabase.from("posts").upsert(
+          {
+            source: "blog",
+            source_id: slug,
+            account: "hoxtonwealth.com",
+            caption: description.slice(0, 2000),
+            image_url: storedImageUrl || ogImage || null,
+            published_at: publishedAt.toISOString(),
+            metadata: {
+              title,
+              url: articleUrl,
+            },
           },
-        });
+          { onConflict: "source_id" }
+        );
 
-        if (insertError) {
-          errors.push(`Insert ${slug}: ${insertError.message}`);
+        if (upsertError) {
+          errors.push(`Upsert ${slug}: ${upsertError.message}`);
         } else {
           added++;
+          validSlugs.add(slug);
         }
       } catch (err) {
         errors.push(
           `${slug}: ${err instanceof Error ? err.message : "unknown error"}`
         );
+      }
+    }
+
+    if (validSlugs.size >= PRUNE_SAFETY_MIN) {
+      const { data: existing } = await supabase
+        .from("posts")
+        .select("source_id")
+        .eq("source", "blog");
+
+      const toDelete = (existing ?? [])
+        .map((r) => r.source_id as string)
+        .filter((sid) => !validSlugs.has(sid));
+
+      for (let i = 0; i < toDelete.length; i += 100) {
+        const chunk = toDelete.slice(i, i + 100);
+        const { error: pruneError } = await supabase
+          .from("posts")
+          .delete()
+          .eq("source", "blog")
+          .in("source_id", chunk);
+
+        if (pruneError) {
+          errors.push(`Prune: ${pruneError.message}`);
+          break;
+        }
+        pruned += chunk.length;
       }
     }
   } catch (err) {
@@ -177,8 +215,15 @@ export async function GET(request: NextRequest) {
   await supabase.from("scrape_log").insert({
     source: "blog",
     items_added: added,
-    metadata: { errors },
+    metadata: { errors, pruned, skipped_stale: skippedStale, skipped_no_date: skippedNoDate },
   });
 
-  return NextResponse.json({ success: true, added, errors });
+  return NextResponse.json({
+    success: true,
+    added,
+    pruned,
+    skipped_stale: skippedStale,
+    skipped_no_date: skippedNoDate,
+    errors,
+  });
 }
