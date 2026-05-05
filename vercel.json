@@ -13,6 +13,10 @@
       "schedule": "0 7 * * *"
     },
     {
+      "path": "/api/cron/fetch-mentions?secret=${CRON_SECRET}",
+      "schedule": "0 2 * * *"
+    },
+    {
       "path": "/api/cron/scrape-ortto?secret=${CRON_SECRET}",
       "schedule": "0 7 * * *"
     }

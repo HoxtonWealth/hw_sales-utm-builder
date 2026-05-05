@@ -19,15 +19,22 @@ src/
     kv.ts             # Vercel KV helpers (getReps, saveReps, getDefaultScId, saveDefaultScId)
     auth.ts           # isAuthenticated() - checks admin_session cookie
   app/
-    page.tsx           # Public builder page - searchable rep dropdown, channel toggle, UTM generation
-    admin/page.tsx     # Password-protected admin - manage reps + default SC_ID
+    page.tsx                     # Public builder page - searchable rep dropdown, channel toggle, UTM generation
+    admin/page.tsx               # Password-protected admin - manage reps + default SC_ID
+    admin/mentions/page.tsx      # Hidden admin page - press/media mentions list + Google Alert feeds CRUD
     api/
-      auth/route.ts    # POST login, DELETE logout
-      reps/route.ts    # GET (public), POST/PUT/DELETE (auth required)
-      settings/route.ts # GET (public), PUT (auth required)
-      shorten/route.ts  # POST - shortens a URL via Short.io API
+      auth/route.ts              # POST login, DELETE logout
+      reps/route.ts              # GET (public), POST/PUT/DELETE (auth required)
+      settings/route.ts          # GET (public), PUT (auth required)
+      shorten/route.ts           # POST - shortens a URL via Short.io API
+      cron/fetch-mentions/route.ts        # Daily cron - pulls Coveragebook + Google Alerts into mentions table
+      admin/mentions/route.ts             # GET list of mentions (admin auth)
+      admin/mentions/run/route.ts         # POST trigger fetch synchronously (admin auth)
+      admin/google-alert-feeds/route.ts   # GET/POST/PUT/DELETE feeds (admin auth)
 scripts/
-  seed.ts              # Seeds 196 reps into KV (run with `npm run seed`)
+  seed.ts                  # Seeds 196 reps into KV (run with `npm run seed`)
+  migrations/              # Manual SQL migrations to run in Supabase dashboard
+    001_mentions.sql         # mentions + google_alert_feeds tables
 ```
 
 ## Environment Variables
@@ -43,6 +50,9 @@ scripts/
 | `ORTTO_BASE_URL` | Optional override; defaults to `https://api.eu.ap3api.com` |
 | `ORTTO_EMAIL_NAME_INCLUDES` | Comma-separated keywords; only campaign names containing one match get ingested |
 | `ORTTO_TIMEZONE` | Optional override; defaults to `Europe/London` |
+| `CRON_SECRET` | Set manually; gates all `/api/cron/*` routes (passed as `?secret=`) |
+| `FIRECRAWL_API_KEY` | Set manually; for Coveragebook scrape via Firecrawl |
+| `COVERAGEBOOK_SHARE_URL` | Set manually; the Coveragebook share-link URL Firecrawl scrapes |
 
 ## Key Commands
 
@@ -67,3 +77,7 @@ scripts/
 - Admin cookie: `admin_session` (httpOnly, secure in prod, sameSite strict, 24h expiry)
 - Rep names are always sorted alphabetically in KV
 - URL shortening uses Short.io API (POST /api/shorten) — no auth required, calls Short.io server-side
+- Mentions feature is **hidden** — only linked from the authenticated `/admin` page. No public route.
+- Mentions retention: 90 days, enforced by `pruneOldMentions()` in `src/lib/mentions.ts` (two-pass: by `published_at`, falls back to `created_at` when null)
+- `mentions` and `google_alert_feeds` tables must be created in Supabase before deploy — run `scripts/migrations/001_mentions.sql` in the Supabase SQL editor
+- The fetch-mentions cron runs daily at 02:00 UTC; admins can also trigger it via "Run now" on `/admin/mentions`
