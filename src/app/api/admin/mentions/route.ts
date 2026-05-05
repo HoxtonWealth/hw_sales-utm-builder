@@ -30,8 +30,19 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await query;
   if (error) {
-    console.error("/api/admin/mentions select error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error(
+      "/api/admin/mentions select error:",
+      JSON.stringify({
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+      })
+    );
+    return NextResponse.json(
+      { error: error.message, code: error.code, details: error.details },
+      { status: 500 }
+    );
   }
 
   return NextResponse.json({ mentions: data ?? [] });
