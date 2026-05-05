@@ -55,10 +55,16 @@ function slugify(s: string): string {
   );
 }
 
-/** Pull a "Daily Sparkle" prefix out of "Daily Sparkle — Spain pensions". */
-function namePrefix(name: string): string | null {
-  const sep = name.match(/^(.*?)\s+[—-]\s+/);
-  return sep ? sep[1].trim() : null;
+/**
+ * Pull the audience tag from campaign names like
+ * "20260428 - Newsletter CGC (Clients)" → "Clients".
+ * Returns null if no recognisable tag is present.
+ */
+function emailAudience(name: string): string | null {
+  const m = name.match(/\((Subs|Clients)\)/i);
+  if (!m) return null;
+  const v = m[1].toLowerCase();
+  return v === "subs" ? "Subs" : "Clients";
 }
 
 function downloadHtml(html: string, filename: string) {
@@ -310,16 +316,16 @@ export default function EmailHubPage() {
       .catch(() => setLoading(false));
   }, []);
 
-  const prefixes = Array.from(
-    new Set(emails.map((e) => namePrefix(e.name)).filter((p): p is string => !!p))
+  const audiences = Array.from(
+    new Set(emails.map((e) => emailAudience(e.name)).filter((a): a is string => !!a))
   ).sort();
 
   const filteredEmails =
     filter === "all"
       ? emails
-      : emails.filter((e) => namePrefix(e.name) === filter.value);
+      : emails.filter((e) => emailAudience(e.name) === filter.value);
 
-  const tabs: Filter[] = ["all", ...prefixes.map((p) => ({ kind: "prefix" as const, value: p }))];
+  const tabs: Filter[] = ["all", ...audiences.map((a) => ({ kind: "prefix" as const, value: a }))];
 
   if (loading) {
     return (
@@ -341,7 +347,7 @@ export default function EmailHubPage() {
         </div>
 
         {/* Filter tabs */}
-        {prefixes.length > 0 && (
+        {audiences.length > 0 && (
           <div className="mt-4 flex flex-wrap gap-2">
             {tabs.map((tab) => {
               const key = filterKey(tab);
