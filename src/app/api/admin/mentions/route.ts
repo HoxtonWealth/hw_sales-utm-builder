@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
   let query = supabase
     .from("mentions")
     .select(
-      "id, source, url, title, snippet, published_at, source_feed_id, created_at, google_alert_feeds(name)"
+      "id, source, url, title, snippet, published_at, source_feed_id, created_at"
     )
     .order("published_at", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
@@ -30,6 +30,7 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await query;
   if (error) {
+    console.error("/api/admin/mentions select error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 

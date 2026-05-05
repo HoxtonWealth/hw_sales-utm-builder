@@ -12,7 +12,6 @@ type Mention = {
   published_at: string | null;
   source_feed_id: string | null;
   created_at: string;
-  google_alert_feeds: { name: string } | null;
 };
 
 type Feed = {
@@ -326,8 +325,11 @@ export default function MentionsAdminPage() {
                       {m.title || m.url}
                     </span>
                     <span className="text-xs text-gray-500 truncate">
-                      {m.google_alert_feeds?.name ||
-                        (m.source === "coveragebook" ? m.snippet || "—" : "—")}
+                      {m.source_feed_id
+                        ? feeds.find((f) => f.id === m.source_feed_id)?.name ?? "—"
+                        : m.source === "coveragebook"
+                        ? m.snippet || "—"
+                        : "—"}
                     </span>
                     <span className="text-xs text-gray-500">
                       {formatDate(m.published_at)}
