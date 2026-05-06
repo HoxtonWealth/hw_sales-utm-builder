@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import posthog from "posthog-js";
 import { Rep } from "@/lib/types";
 
 export default function BuilderPage() {
@@ -103,6 +104,11 @@ export default function BuilderPage() {
     const utmUrl = generateUtmUrl();
     if (!utmUrl) return;
     navigator.clipboard.writeText(utmUrl);
+    posthog.capture("utm_generated", {
+      channel,
+      rep_name: selectedRep?.name,
+      target_url: url,
+    });
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
@@ -120,6 +126,11 @@ export default function BuilderPage() {
       const data = await res.json();
       if (data.shortUrl) {
         setShortUrl(data.shortUrl);
+        posthog.capture("link_shortened", {
+          channel,
+          rep_name: selectedRep?.name,
+          target_url: url,
+        });
       }
     } catch {
       // silently fail

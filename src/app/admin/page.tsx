@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import posthog from "posthog-js";
 import { Rep } from "@/lib/types";
 
 export default function AdminPage() {
@@ -43,6 +44,7 @@ export default function AdminPage() {
       });
 
       if (res.ok) {
+        posthog.capture("admin_login_success");
         setLoggedIn(true);
         setPassword("");
       } else {
