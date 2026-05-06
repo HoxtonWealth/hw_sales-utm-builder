@@ -28,11 +28,10 @@ Give sales reps a single place to find PDF collateral (tax checklists, pension g
 ## Architecture
 
 ### New files
-- `scripts/migrations/002_assets.sql` — table + indexes (run manually in Supabase SQL editor).
+- `scripts/migrations/003_assets.sql` — table + indexes (run manually in Supabase SQL editor).
 - `src/lib/assets.ts` — `getAssets`, `createAsset`, `updateAsset`, `deleteAsset` helpers.
 - `src/app/api/assets/route.ts` — public `GET` (force-dynamic), returns full list.
-- `src/app/api/admin/assets/route.ts` — `GET` list (auth), `POST` create (auth).
-- `src/app/api/admin/assets/[id]/route.ts` — `PUT` update (auth), `DELETE` remove (auth).
+- `src/app/api/admin/assets/route.ts` — `GET` list, `POST` create, `PUT` update, `DELETE` remove (all auth, id-in-body for PUT/DELETE — matches the existing `google-alert-feeds` pattern).
 - `src/app/admin/assets/page.tsx` — admin form + table.
 - `src/app/asset-hub/page.tsx` — rep-facing card grid + filters.
 
@@ -128,8 +127,8 @@ Public route. Linked from `src/components/Nav.tsx`.
 | GET    | `/api/assets`                      | none  | —                                                                    | `{ assets: Asset[] }` |
 | GET    | `/api/admin/assets`                | admin | —                                                                    | `{ assets: Asset[] }` |
 | POST   | `/api/admin/assets`                | admin | `{ title, url, description?, tags: string[], shareable: boolean }`   | `{ asset: Asset }`    |
-| PUT    | `/api/admin/assets/[id]`           | admin | partial `{ title?, url?, description?, tags?, shareable? }`          | `{ asset: Asset }`    |
-| DELETE | `/api/admin/assets/[id]`           | admin | —                                                                    | `{ ok: true }`        |
+| PUT    | `/api/admin/assets`                | admin | `{ id, title?, url?, description?, tags?, shareable? }`              | `{ asset: Asset }`    |
+| DELETE | `/api/admin/assets`                | admin | `{ id }`                                                             | `{ success: true }`   |
 
 All `GET` routes export `dynamic = "force-dynamic"`.
 All admin routes call `isAuthenticated()` first; return 401 otherwise.
@@ -137,7 +136,7 @@ All admin routes call `isAuthenticated()` first; return 401 otherwise.
 ## Test plan
 
 Manual smoke (no automated test infra in this repo):
-1. Run migration `002_assets.sql` in Supabase SQL editor.
+1. Run migration `003_assets.sql` in Supabase SQL editor.
 2. Visit `/admin/assets`, add the seed list of PDFs (user will provide URL + tag list).
 3. Edit an asset — change title, add a tag, toggle `shareable`. Verify changes persist.
 4. Delete an asset. Verify it disappears from `/asset-hub`.
