@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import posthog from "posthog-js";
 import type { Asset } from "@/lib/types";
 
 // Datocms uses `?dl=<filename>` to set Content-Disposition: attachment.
@@ -175,7 +176,14 @@ export default function AssetHubPage() {
                   <div className="mt-4 flex justify-end pt-3 border-t border-gray-100">
                     <button
                       type="button"
-                      onClick={() => setOpenAsset(asset)}
+                      onClick={() => {
+                        setOpenAsset(asset);
+                        posthog.capture("asset_opened", {
+                          asset_id: asset.id,
+                          asset_title: asset.title,
+                          tags: asset.tags,
+                        });
+                      }}
                       className="rounded-md bg-gray-900 px-3 py-1 text-xs font-medium text-white hover:bg-gray-800 transition-colors"
                     >
                       View
@@ -262,6 +270,12 @@ function AssetModal({
             href={withInlineUrl(asset.url)}
             target="_blank"
             rel="noreferrer"
+            onClick={() =>
+              posthog.capture("asset_pdf_opened", {
+                asset_id: asset.id,
+                asset_title: asset.title,
+              })
+            }
             className="flex w-full items-center justify-center gap-2 rounded-lg border border-stone-300 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50 transition-colors"
           >
             Open PDF ↗
@@ -269,6 +283,12 @@ function AssetModal({
           <a
             href={withDownloadUrl(asset.url, filename)}
             download={filename}
+            onClick={() =>
+              posthog.capture("asset_pdf_downloaded", {
+                asset_id: asset.id,
+                asset_title: asset.title,
+              })
+            }
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-900 py-2 text-sm font-medium text-white hover:bg-gray-800 transition-colors"
           >
             <DownloadIcon />

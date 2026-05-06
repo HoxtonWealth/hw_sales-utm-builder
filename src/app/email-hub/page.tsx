@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import posthog from "posthog-js";
 
 type Email = {
   id: string;
@@ -184,6 +185,13 @@ function EmailModal({ email, onClose }: { email: Email; onClose: () => void }) {
   function copy(text: string | null, key: "subject" | "preview" | "html") {
     if (!text) return;
     navigator.clipboard.writeText(text);
+    if (key === "subject") {
+      posthog.capture("email_subject_copied", {
+        email_id: email.id,
+        audience: emailAudience(email.name),
+        location: "modal",
+      });
+    }
     setCopied(key);
     setTimeout(() => setCopied(null), 2000);
   }
@@ -257,7 +265,13 @@ function EmailModal({ email, onClose }: { email: Email; onClose: () => void }) {
         {/* Actions */}
         <div className="space-y-2 p-5">
           <button
-            onClick={() => downloadHtml(email.body_html, downloadName)}
+            onClick={() => {
+              downloadHtml(email.body_html, downloadName);
+              posthog.capture("email_html_downloaded", {
+                email_id: email.id,
+                audience: emailAudience(email.name),
+              });
+            }}
             className="flex w-full items-center justify-center gap-2 rounded-lg border border-stone-300 py-2 text-sm font-medium text-stone-700 transition-colors hover:bg-stone-50"
           >
             <DownloadIcon />
@@ -410,6 +424,11 @@ export default function EmailHubPage() {
                       <button
                         onClick={() => {
                           navigator.clipboard.writeText(email.subject!);
+                          posthog.capture("email_subject_copied", {
+                            email_id: email.id,
+                            audience: emailAudience(email.name),
+                            location: "card",
+                          });
                           setCopiedSubjectId(email.id);
                           setTimeout(() => setCopiedSubjectId(null), 2000);
                         }}
@@ -419,7 +438,13 @@ export default function EmailHubPage() {
                       </button>
                     )}
                     <button
-                      onClick={() => setOpenEmail(email)}
+                      onClick={() => {
+                        setOpenEmail(email);
+                        posthog.capture("email_opened", {
+                          email_id: email.id,
+                          audience: emailAudience(email.name),
+                        });
+                      }}
                       className="flex items-center gap-1 rounded-md bg-gray-900 px-2 py-0.5 text-[10px] font-medium text-white transition-colors hover:bg-gray-800"
                     >
                       Open

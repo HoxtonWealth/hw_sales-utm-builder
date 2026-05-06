@@ -105,6 +105,7 @@ export default function BuilderPage() {
     if (!utmUrl) return;
     navigator.clipboard.writeText(utmUrl);
     posthog.capture("utm_generated", {
+      source_page: "builder",
       channel,
       rep_name: selectedRep?.name,
       target_url: url,
@@ -127,6 +128,7 @@ export default function BuilderPage() {
       if (data.shortUrl) {
         setShortUrl(data.shortUrl);
         posthog.capture("link_shortened", {
+          source_page: "builder",
           channel,
           rep_name: selectedRep?.name,
           target_url: url,

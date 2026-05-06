@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import posthog from "posthog-js";
 
 type Rep = { name: string; sc_id: string | null };
 
@@ -329,6 +330,14 @@ function RepostModal({
   function handleCopyLink() {
     if (!utmUrl) return;
     navigator.clipboard.writeText(utmUrl);
+    posthog.capture("utm_generated", {
+      source_page: "content_hub",
+      channel,
+      rep_name: selectedRep?.name,
+      target_url: postUrl,
+      content_source: post.source,
+      content_id: post.source_id,
+    });
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
@@ -350,11 +359,29 @@ function RepostModal({
       const data = await res.json();
       if (data.text) {
         setAiText(data.text);
+        posthog.capture("ai_post_generated", {
+          success: true,
+          content_source: post.source,
+          platform: channel,
+          rep_name: selectedRep?.name,
+        });
       } else {
         setAiText("Failed to generate post. Check API configuration.");
+        posthog.capture("ai_post_generated", {
+          success: false,
+          content_source: post.source,
+          platform: channel,
+          rep_name: selectedRep?.name,
+        });
       }
     } catch {
       setAiText("Failed to generate post.");
+      posthog.capture("ai_post_generated", {
+        success: false,
+        content_source: post.source,
+        platform: channel,
+        rep_name: selectedRep?.name,
+      });
     } finally {
       setAiLoading(false);
     }
@@ -362,6 +389,11 @@ function RepostModal({
 
   function handleCopyAI() {
     navigator.clipboard.writeText(aiText);
+    posthog.capture("ai_post_copied", {
+      content_source: post.source,
+      platform: channel,
+      rep_name: selectedRep?.name,
+    });
     setAiCopied(true);
     setTimeout(() => setAiCopied(false), 2000);
   }
@@ -444,6 +476,11 @@ function RepostModal({
             <button
               onClick={() => {
                 navigator.clipboard.writeText(post.caption!);
+                posthog.capture("content_caption_copied", {
+                  content_source: post.source,
+                  content_id: post.source_id,
+                  location: "modal",
+                });
                 setCaptionCopied(true);
                 setTimeout(() => setCaptionCopied(false), 2000);
               }}
@@ -849,6 +886,11 @@ export default function ContentHubPage() {
                       <button
                         onClick={() => {
                           navigator.clipboard.writeText(post.caption!);
+                          posthog.capture("content_caption_copied", {
+                            content_source: post.source,
+                            content_id: post.source_id,
+                            location: "card",
+                          });
                           setCopiedCaptionId(post.id);
                           setTimeout(() => setCopiedCaptionId(null), 2000);
                         }}
@@ -858,7 +900,14 @@ export default function ContentHubPage() {
                       </button>
                     )}
                     <button
-                      onClick={() => setRepostPost(post)}
+                      onClick={() => {
+                        setRepostPost(post);
+                        posthog.capture("content_post_opened", {
+                          content_source: post.source,
+                          content_id: post.source_id,
+                          account: post.account,
+                        });
+                      }}
                       className="flex items-center gap-1 rounded-md bg-gray-900 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-gray-800 transition-colors"
                     >
                       <ShareIcon />
