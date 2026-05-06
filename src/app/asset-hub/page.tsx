@@ -133,13 +133,18 @@ export default function AssetHubPage() {
     setBusyId(asset.id);
     try {
       const utmUrl = buildUtmUrl(asset, selectedRep, defaultScId, channel);
-      const res = await fetch("/api/shorten", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: utmUrl }),
-      });
-      const data = await res.json();
-      const finalUrl = data?.shortUrl ?? utmUrl;
+      let finalUrl = utmUrl;
+      try {
+        const res = await fetch("/api/shorten", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: utmUrl }),
+        });
+        const data = await res.json();
+        if (data?.shortUrl) finalUrl = data.shortUrl;
+      } catch {
+        // Shortener unreachable — fall through and copy the long UTM url.
+      }
       await navigator.clipboard.writeText(finalUrl);
       setCopiedId(asset.id);
       setTimeout(() => setCopiedId(null), 2000);
