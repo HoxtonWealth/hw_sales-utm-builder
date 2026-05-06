@@ -22,19 +22,24 @@ src/
     page.tsx                     # Public builder page - searchable rep dropdown, channel toggle, UTM generation
     admin/page.tsx               # Password-protected admin - manage reps + default SC_ID
     admin/mentions/page.tsx      # Hidden admin page - press/media mentions list + Google Alert feeds CRUD
+    admin/assets/page.tsx        # Admin CRUD for the Asset Hub (PDFs by URL + tags + shareable flag)
+    asset-hub/page.tsx           # Public Asset Hub - searchable/tagged PDF library, tracked share links
     api/
       auth/route.ts              # POST login, DELETE logout
       reps/route.ts              # GET (public), POST/PUT/DELETE (auth required)
       settings/route.ts          # GET (public), PUT (auth required)
       shorten/route.ts           # POST - shortens a URL via Short.io API
+      assets/route.ts            # GET (public) - list assets for /asset-hub
       cron/fetch-mentions/route.ts        # Daily cron - pulls Coveragebook + Google Alerts into mentions table
       admin/mentions/route.ts             # GET list of mentions (admin auth)
       admin/mentions/run/route.ts         # POST trigger fetch synchronously (admin auth)
       admin/google-alert-feeds/route.ts   # GET/POST/PUT/DELETE feeds (admin auth)
+      admin/assets/route.ts               # GET/POST/PUT/DELETE assets (admin auth, id-in-body for PUT/DELETE)
 scripts/
   seed.ts                  # Seeds 196 reps into KV (run with `npm run seed`)
   migrations/              # Manual SQL migrations to run in Supabase dashboard
     001_mentions.sql         # mentions + google_alert_feeds tables
+    003_assets.sql           # assets table for Asset Hub
 ```
 
 ## Environment Variables
@@ -81,3 +86,5 @@ scripts/
 - Mentions retention: 90 days, enforced by `pruneOldMentions()` in `src/lib/mentions.ts` (two-pass: by `published_at`, falls back to `created_at` when null)
 - `mentions` and `google_alert_feeds` tables must be created in Supabase before deploy — run `scripts/migrations/001_mentions.sql` in the Supabase SQL editor
 - The fetch-mentions cron runs daily at 02:00 UTC; admins can also trigger it via "Run now" on `/admin/mentions`
+- Asset Hub stores **only URLs** to PDFs hosted elsewhere (e.g. datocms). No file uploads. The `assets` table must be created via `scripts/migrations/003_assets.sql` before deploy.
+- Asset Hub admin CRUD lives at `/admin/assets`; public browse at `/asset-hub` (linked from the global Nav).
