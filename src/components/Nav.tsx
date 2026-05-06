@@ -7,6 +7,7 @@ const links = [
   { href: "/", label: "Link Builder" },
   { href: "/content-hub", label: "Content Hub" },
   { href: "/email-hub", label: "Email Hub" },
+  { href: "/asset-hub", label: "Asset Hub" },
   { href: "/admin", label: "Admin" },
 ];
 
