@@ -27,6 +27,15 @@ export default function MarketingContactPage() {
   const [dateTo, setDateTo] = useState("");
   const [activeTypes, setActiveTypes] = useState<Set<string>>(new Set());
 
+  const [enriching, setEnriching] = useState(false);
+  const [enrichSaved, setEnrichSaved] = useState(false);
+  const [enrichNotFound, setEnrichNotFound] = useState(false);
+  const [enrichError, setEnrichError] = useState("");
+  const [enrichConflict, setEnrichConflict] = useState<{
+    existing: string;
+    incoming: string;
+  } | null>(null);
+
   const allGroupKeys = Object.keys(ACTIVITY_GROUPS);
 
   const filteredGroups: DateGroup[] = useMemo(() => {
@@ -80,6 +89,11 @@ export default function MarketingContactPage() {
     setDateFrom("");
     setDateTo("");
     setActiveTypes(new Set());
+    setEnriching(false);
+    setEnrichSaved(false);
+    setEnrichNotFound(false);
+    setEnrichError("");
+    setEnrichConflict(null);
 
     try {
       const lookupRes = await fetch("/api/marketing-contact/lookup", {
@@ -120,6 +134,104 @@ export default function MarketingContactPage() {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleEnrich() {
+    if (!contact) return;
+    setEnriching(true);
+    setEnrichSaved(false);
+    setEnrichNotFound(false);
+    setEnrichError("");
+    setEnrichConflict(null);
+
+    try {
+      const startRes = await fetch(
+        "/api/marketing-contact/enrich-linkedin/start",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: contact.email }),
+        }
+      );
+      const startData = await startRes.json();
+      if (!startRes.ok) {
+        setEnrichError(startData.error || "Failed to start lookup");
+        return;
+      }
+      const enrichmentId: string = startData.enrichmentId;
+
+      const existingUrl = contact.linkedinUrl || "";
+      const params = new URLSearchParams({
+        contactId: contact.id,
+        existingUrl,
+      });
+
+      for (let attempt = 0; attempt < 15; attempt++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const pollRes = await fetch(
+          `/api/marketing-contact/enrich-linkedin/${enrichmentId}?${params.toString()}`
+        );
+        const pollData = await pollRes.json();
+        if (!pollRes.ok) {
+          setEnrichError(pollData.error || "Lookup failed");
+          return;
+        }
+
+        if (pollData.status === "FINISHED") {
+          if (!pollData.linkedinUrl) {
+            setEnrichNotFound(true);
+            return;
+          }
+          if (pollData.conflictsWithExisting) {
+            setEnrichConflict({
+              existing: existingUrl,
+              incoming: pollData.linkedinUrl,
+            });
+            return;
+          }
+          setContact({ ...contact, linkedinUrl: pollData.linkedinUrl });
+          if (pollData.saved) setEnrichSaved(true);
+          return;
+        }
+      }
+
+      setEnrichError("Still running — try again in a minute.");
+    } catch (err) {
+      setEnrichError(err instanceof Error ? err.message : "Lookup failed");
+    } finally {
+      setEnriching(false);
+    }
+  }
+
+  async function handleReplace() {
+    if (!contact || !enrichConflict) return;
+    setEnriching(true);
+    setEnrichError("");
+    try {
+      const res = await fetch(
+        "/api/marketing-contact/enrich-linkedin/save",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contactId: contact.id,
+            linkedinUrl: enrichConflict.incoming,
+          }),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setEnrichError(data.error || "Save failed");
+        return;
+      }
+      setContact({ ...contact, linkedinUrl: enrichConflict.incoming });
+      setEnrichConflict(null);
+      setEnrichSaved(true);
+    } catch (err) {
+      setEnrichError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setEnriching(false);
     }
   }
 
@@ -232,6 +344,86 @@ export default function MarketingContactPage() {
             <p>Email: {contact.email}</p>
             {contact.hxtId && <p>HXT ID: {contact.hxtId}</p>}
             <p>Ortto ID: {contact.id}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <span>LinkedIn:</span>
+              {contact.linkedinUrl ? (
+                <>
+                  <a
+                    href={contact.linkedinUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-800"
+                  >
+                    {contact.linkedinUrl}
+                  </a>
+                  <button
+                    type="button"
+                    onClick={handleEnrich}
+                    disabled={enriching}
+                    className="text-xs text-gray-500 underline hover:text-gray-700 disabled:opacity-50"
+                  >
+                    {enriching ? "Looking up…" : "Re-enrich"}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleEnrich}
+                  disabled={enriching}
+                  className="rounded border border-blue-600 px-2 py-0.5 text-xs text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                >
+                  {enriching ? "Looking up…" : "Find LinkedIn (FullEnrich)"}
+                </button>
+              )}
+            </div>
+            {enrichSaved && (
+              <p className="text-xs text-green-600">Saved to Ortto ✓</p>
+            )}
+            {enrichNotFound && (
+              <p className="text-xs text-gray-400">
+                No LinkedIn profile found.
+              </p>
+            )}
+            {enrichError && (
+              <p className="text-xs text-red-600">{enrichError}</p>
+            )}
+            {enrichConflict && (
+              <div className="mt-1 rounded border border-amber-300 bg-amber-50 p-2 text-xs">
+                <p className="font-semibold text-amber-900">
+                  Different LinkedIn URL returned:
+                </p>
+                <p className="mt-1">
+                  <span className="text-amber-700">Existing:</span>{" "}
+                  <a
+                    href={enrichConflict.existing}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-800"
+                  >
+                    {enrichConflict.existing}
+                  </a>
+                </p>
+                <p>
+                  <span className="text-amber-700">New:</span>{" "}
+                  <a
+                    href={enrichConflict.incoming}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-800"
+                  >
+                    {enrichConflict.incoming}
+                  </a>
+                </p>
+                <button
+                  type="button"
+                  onClick={handleReplace}
+                  disabled={enriching}
+                  className="mt-2 rounded bg-amber-600 px-2 py-1 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                >
+                  Replace existing
+                </button>
+              </div>
+            )}
           </div>
           <p className="mt-2 text-sm text-gray-400">
             {totalActivities} total activities

@@ -261,7 +261,20 @@ function parseContact(raw: RawContact): Contact {
     firstName: raw.fields["str::first"] || "",
     lastName: raw.fields["str::last"] || "",
     hxtId: raw.fields["str:cm:hxt-id"] || "",
+    linkedinUrl: raw.fields["str:cm:linkedin-url"] || "",
   };
+}
+
+export async function updateContactLinkedIn(
+  contactId: string,
+  linkedinUrl: string
+): Promise<void> {
+  await orttoPost("/v1/person/merge", {
+    people: [
+      { id: contactId, fields: { "str:cm:linkedin-url": linkedinUrl } },
+    ],
+    merge_by: ["id"],
+  });
 }
 
 export async function lookupContactById(

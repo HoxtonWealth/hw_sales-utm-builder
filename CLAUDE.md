@@ -64,6 +64,8 @@ scripts/
 | `CRON_SECRET` | Set manually; gates all `/api/cron/*` routes (passed as `?secret=`) |
 | `FIRECRAWL_API_KEY` | Set manually; for Coveragebook scrape via Firecrawl |
 | `COVERAGEBOOK_SHARE_URL` | Set manually; the Coveragebook share-link URL Firecrawl scrapes |
+| `FULLENRICH_API_KEY` | Set manually; for LinkedIn reverse-email lookup on `/marketing-contact` |
+| `FULLENRICH_API_BASE` | Optional override; defaults to `https://app.fullenrich.com/api/v1` |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key (Marketing Contact only) |
 | `CLERK_SECRET_KEY` | Clerk secret key (Marketing Contact only) |
 | `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | `/marketing-contact/sign-in` |

@@ -6,6 +6,7 @@ export interface Contact {
   firstName: string;
   lastName: string;
   hxtId: string;
+  linkedinUrl: string;
 }
 
 export interface Activity {

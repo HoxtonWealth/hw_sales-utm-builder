@@ -89,5 +89,6 @@ export const CONTACT_FIELDS = [
   "str::first",
   "str::last",
   "str:cm:hxt-id",
+  "str:cm:linkedin-url",
   "c",
 ];
