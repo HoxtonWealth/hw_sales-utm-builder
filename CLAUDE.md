@@ -27,8 +27,7 @@ src/
     marketing-contact/                                # Clerk-gated section
       layout.tsx                                       # ClerkProvider wrapper (scoped to this segment)
       page.tsx                                         # Lookup contact by Ortto/HXT/email + activity timeline
-      sign-in/[[...sign-in]]/page.tsx                  # Clerk <SignIn />
-      sign-up/[[...sign-up]]/page.tsx                  # Clerk <SignUp />
+      sign-in/[[...sign-in]]/page.tsx                  # Clerk <SignIn /> (sign-up disabled — invite-only via Clerk Dashboard)
     api/
       auth/route.ts              # POST login, DELETE logout
       reps/route.ts              # GET (public), POST/PUT/DELETE (auth required)
@@ -68,9 +67,7 @@ scripts/
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key (Marketing Contact only) |
 | `CLERK_SECRET_KEY` | Clerk secret key (Marketing Contact only) |
 | `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | `/marketing-contact/sign-in` |
-| `NEXT_PUBLIC_CLERK_SIGN_UP_URL` | `/marketing-contact/sign-up` |
 | `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL` | `/marketing-contact` |
-| `NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL` | `/marketing-contact` |
 
 ## Key Commands
 

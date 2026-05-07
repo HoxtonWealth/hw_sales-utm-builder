@@ -2,7 +2,6 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
 const isMarketingPublic = createRouteMatcher([
   "/marketing-contact/sign-in(.*)",
-  "/marketing-contact/sign-up(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
