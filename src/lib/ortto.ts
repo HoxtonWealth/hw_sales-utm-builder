@@ -1,5 +1,5 @@
 /**
- * Ortto API client for the Email Hub.
+ * Ortto API client. Used by the Email Hub and Marketing Contact section.
  *
  * Docs: https://help.ortto.com/a-250-api-reference
  *
@@ -8,6 +8,12 @@
  *   EU: https://api.eu.ap3api.com   ← default for this project
  *   AU: https://api.au.ap3api.com
  */
+import {
+  CONTACT_FIELDS,
+  ACTIVITY_IDS,
+} from "./marketing-contact/constants";
+import type { Contact, Activity } from "./marketing-contact/types";
+
 function getBaseUrl(): string {
   return process.env.ORTTO_BASE_URL || "https://api.eu.ap3api.com";
 }
@@ -239,4 +245,85 @@ export function parseKeywords(raw: string | undefined): string[] {
     .split(",")
     .map((k) => k.trim())
     .filter(Boolean);
+}
+
+// ---------------------------------------------------------------------------
+// Marketing Contact section: contact lookup + activity timeline.
+// Uses the same orttoPost (region from ORTTO_BASE_URL, key from ORTTO_API_KEY).
+// ---------------------------------------------------------------------------
+
+type RawContact = { id: string; fields: Record<string, string> };
+
+function parseContact(raw: RawContact): Contact {
+  return {
+    id: raw.id,
+    email: raw.fields["str::email"] || "",
+    firstName: raw.fields["str::first"] || "",
+    lastName: raw.fields["str::last"] || "",
+    hxtId: raw.fields["str:cm:hxt-id"] || "",
+  };
+}
+
+export async function lookupContactById(
+  contactId: string
+): Promise<Contact | null> {
+  const data = await orttoPost<{ contacts?: RawContact[] }>(
+    "/v1/person/get-by-ids",
+    { contact_ids: [contactId], fields: CONTACT_FIELDS }
+  );
+  const raw = data.contacts?.[0];
+  return raw ? parseContact(raw) : null;
+}
+
+export async function lookupContactByEmail(
+  email: string
+): Promise<Contact | null> {
+  const data = await orttoPost<{ contacts?: RawContact[] }>("/v1/person/get", {
+    fields: CONTACT_FIELDS,
+    filter: { "$str::is": { field_id: "str::email", value: email } },
+    limit: 1,
+  });
+  const raw = data.contacts?.[0];
+  return raw ? parseContact(raw) : null;
+}
+
+export async function lookupContactByHxtId(
+  hxtId: string
+): Promise<Contact | null> {
+  const data = await orttoPost<{ contacts?: RawContact[] }>("/v1/person/get", {
+    fields: CONTACT_FIELDS,
+    filter: { "$str::is": { field_id: "str:cm:hxt-id", value: hxtId } },
+    limit: 1,
+  });
+  const raw = data.contacts?.[0];
+  return raw ? parseContact(raw) : null;
+}
+
+export async function getContactActivities(
+  personId: string,
+  offset = 0,
+  limit = 40
+): Promise<{
+  activities: Activity[];
+  total: number;
+  hasMore: boolean;
+  nextOffset: number;
+}> {
+  const data = await orttoPost<{
+    activities?: Activity[];
+    meta?: { total_activities?: number; has_more?: boolean };
+    next_offset?: number;
+  }>("/v1/person/get/activities", {
+    person_id: personId,
+    activities: Object.keys(ACTIVITY_IDS),
+    limit,
+    offset,
+  });
+
+  return {
+    activities: data.activities || [],
+    total: data.meta?.total_activities || 0,
+    hasMore: data.meta?.has_more || false,
+    nextOffset: data.next_offset || 0,
+  };
 }

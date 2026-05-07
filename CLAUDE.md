@@ -8,7 +8,7 @@ Internal tool for Hoxton Wealth sales reps to generate tracked UTM links.
 - **Database:** Upstash Redis via `@vercel/kv` (two keys: `reps`, `default_sc_id`)
 - **Styling:** Tailwind CSS
 - **Hosting:** Vercel (auto-deploys from GitHub)
-- **Auth:** Single admin password via `ADMIN_PASSWORD` env var + httpOnly cookie
+- **Auth:** Single admin password via `ADMIN_PASSWORD` env var + httpOnly cookie for `/admin/*`. Clerk (`@clerk/nextjs`) for `/marketing-contact/*` only — scoped via `src/middleware.ts` matcher.
 
 ## Project Structure
 
@@ -24,6 +24,11 @@ src/
     admin/mentions/page.tsx      # Hidden admin page - press/media mentions list + Google Alert feeds CRUD
     admin/assets/page.tsx        # Admin CRUD for the Asset Hub (PDFs by URL + tags + shareable flag)
     asset-hub/page.tsx           # Public Asset Hub - searchable/tagged PDF library, tracked share links
+    marketing-contact/                                # Clerk-gated section
+      layout.tsx                                       # ClerkProvider wrapper (scoped to this segment)
+      page.tsx                                         # Lookup contact by Ortto/HXT/email + activity timeline
+      sign-in/[[...sign-in]]/page.tsx                  # Clerk <SignIn />
+      sign-up/[[...sign-up]]/page.tsx                  # Clerk <SignUp />
     api/
       auth/route.ts              # POST login, DELETE logout
       reps/route.ts              # GET (public), POST/PUT/DELETE (auth required)
@@ -35,6 +40,8 @@ src/
       admin/mentions/run/route.ts         # POST trigger fetch synchronously (admin auth)
       admin/google-alert-feeds/route.ts   # GET/POST/PUT/DELETE feeds (admin auth)
       admin/assets/route.ts               # GET/POST/PUT/DELETE assets (admin auth, id-in-body for PUT/DELETE)
+      marketing-contact/lookup/route.ts   # POST - resolve email/HXT/Ortto ID to contact (Clerk-protected)
+      marketing-contact/activities/route.ts  # POST - paginated activities for a contact (Clerk-protected)
 scripts/
   seed.ts                  # Seeds 196 reps into KV (run with `npm run seed`)
   migrations/              # Manual SQL migrations to run in Supabase dashboard
@@ -58,6 +65,12 @@ scripts/
 | `CRON_SECRET` | Set manually; gates all `/api/cron/*` routes (passed as `?secret=`) |
 | `FIRECRAWL_API_KEY` | Set manually; for Coveragebook scrape via Firecrawl |
 | `COVERAGEBOOK_SHARE_URL` | Set manually; the Coveragebook share-link URL Firecrawl scrapes |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key (Marketing Contact only) |
+| `CLERK_SECRET_KEY` | Clerk secret key (Marketing Contact only) |
+| `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | `/marketing-contact/sign-in` |
+| `NEXT_PUBLIC_CLERK_SIGN_UP_URL` | `/marketing-contact/sign-up` |
+| `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL` | `/marketing-contact` |
+| `NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL` | `/marketing-contact` |
 
 ## Key Commands
 
@@ -88,3 +101,4 @@ scripts/
 - The fetch-mentions cron runs daily at 02:00 UTC; admins can also trigger it via "Run now" on `/admin/mentions`
 - Asset Hub stores **only URLs** to PDFs hosted elsewhere (e.g. datocms). No file uploads. The `assets` table must be created via `scripts/migrations/003_assets.sql` before deploy.
 - Asset Hub admin CRUD lives at `/admin/assets`; public browse at `/asset-hub` (linked from the global Nav).
+- **Marketing Contact** (`/marketing-contact`) is Clerk-gated. The Clerk middleware in `src/middleware.ts` is intentionally scoped to `/marketing-contact/:path*` and `/api/marketing-contact/:path*` — so `/admin`, the other hubs, and all `/api/cron/*` routes are unaffected. `<ClerkProvider>` lives only in `src/app/marketing-contact/layout.tsx`. Sign-up allowlist is managed in the Clerk Dashboard.

@@ -8,6 +8,7 @@ const links = [
   { href: "/content-hub", label: "Content Hub" },
   { href: "/email-hub", label: "Email Hub" },
   { href: "/asset-hub", label: "Asset Hub" },
+  { href: "/marketing-contact", label: "Marketing Contact" },
   { href: "/admin", label: "Admin" },
 ];
 
