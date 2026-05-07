@@ -192,7 +192,7 @@ export default function MarketingContactPage() {
     <main className="mx-auto max-w-4xl p-6">
       <div className="mb-6 flex items-start justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Marketing Contact</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Marketing Activities</h1>
           <p className="text-gray-500">
             Look up an Ortto contact by Ortto ID, HXT ID, or email address.
           </p>
