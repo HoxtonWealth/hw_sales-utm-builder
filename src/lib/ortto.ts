@@ -271,7 +271,12 @@ export async function updateContactLinkedIn(
 ): Promise<void> {
   await orttoPost("/v1/person/merge", {
     people: [
-      { id: contactId, fields: { "str:cm:linkedin-url": linkedinUrl } },
+      {
+        fields: {
+          id: contactId,
+          "str:cm:linkedin-url": linkedinUrl,
+        },
+      },
     ],
     merge_by: ["id"],
   });
