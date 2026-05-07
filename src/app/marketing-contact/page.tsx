@@ -78,6 +78,15 @@ export default function MarketingContactPage() {
     incoming: string;
   } | null>(null);
 
+  const [phoneEnriching, setPhoneEnriching] = useState(false);
+  const [phoneSaved, setPhoneSaved] = useState(false);
+  const [phoneNotFound, setPhoneNotFound] = useState(false);
+  const [phoneError, setPhoneError] = useState("");
+  const [phoneConflict, setPhoneConflict] = useState<{
+    existing: string;
+    incoming: string;
+  } | null>(null);
+
   const allGroupKeys = Object.keys(ACTIVITY_GROUPS);
 
   const filteredGroups: DateGroup[] = useMemo(() => {
@@ -136,6 +145,11 @@ export default function MarketingContactPage() {
     setEnrichNotFound(false);
     setEnrichError("");
     setEnrichConflict(null);
+    setPhoneEnriching(false);
+    setPhoneSaved(false);
+    setPhoneNotFound(false);
+    setPhoneError("");
+    setPhoneConflict(null);
 
     try {
       const lookupRes = await fetch("/api/marketing-contact/lookup", {
@@ -298,6 +312,126 @@ export default function MarketingContactPage() {
       setEnrichError(err instanceof Error ? err.message : "Save failed");
     } finally {
       setEnriching(false);
+    }
+  }
+
+  async function handleEnrichPhone() {
+    if (!contact || !contact.linkedinUrl) return;
+    setPhoneEnriching(true);
+    setPhoneSaved(false);
+    setPhoneNotFound(false);
+    setPhoneError("");
+    setPhoneConflict(null);
+
+    const cacheKey = `phone-enrich:${contact.id}`;
+
+    try {
+      let enrichmentId = readEnrichmentCache(cacheKey);
+
+      if (!enrichmentId) {
+        const startRes = await fetch(
+          "/api/marketing-contact/enrich-phone/start",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ linkedinUrl: contact.linkedinUrl }),
+          }
+        );
+        const startData = await startRes.json();
+        if (!startRes.ok) {
+          setPhoneError(startData.error || "Failed to start lookup");
+          return;
+        }
+        enrichmentId = startData.enrichmentId as string;
+        writeEnrichmentCache(cacheKey, enrichmentId);
+      }
+
+      const existingPhone = contact.phone || "";
+      const params = new URLSearchParams({
+        contactId: contact.id,
+        existingPhone,
+      });
+
+      const TERMINAL_FAIL = new Set([
+        "CANCELED",
+        "CREDITS_INSUFFICIENT",
+        "RATE_LIMIT",
+      ]);
+
+      for (let attempt = 0; attempt < 90; attempt++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const pollRes = await fetch(
+          `/api/marketing-contact/enrich-phone/${enrichmentId}?${params.toString()}`
+        );
+        const pollData = await pollRes.json();
+        if (!pollRes.ok) {
+          setPhoneError(pollData.error || "Lookup failed");
+          return;
+        }
+
+        if (TERMINAL_FAIL.has(pollData.status)) {
+          clearEnrichmentCache(cacheKey);
+          setPhoneError(`Lookup ended: ${pollData.status}`);
+          return;
+        }
+
+        if (pollData.status === "FINISHED") {
+          clearEnrichmentCache(cacheKey);
+          if (!pollData.phone) {
+            setPhoneNotFound(true);
+            return;
+          }
+          if (pollData.conflictsWithExisting) {
+            setPhoneConflict({
+              existing: existingPhone,
+              incoming: pollData.phone,
+            });
+            return;
+          }
+          setContact({ ...contact, phone: pollData.phone });
+          if (pollData.saved) setPhoneSaved(true);
+          return;
+        }
+      }
+
+      setPhoneError(
+        "Still running after 3 minutes — try again later; we'll pick up the same lookup."
+      );
+    } catch (err) {
+      setPhoneError(err instanceof Error ? err.message : "Lookup failed");
+    } finally {
+      setPhoneEnriching(false);
+    }
+  }
+
+  async function handleReplacePhone() {
+    if (!contact || !phoneConflict) return;
+    setPhoneEnriching(true);
+    setPhoneError("");
+    try {
+      const res = await fetch(
+        "/api/marketing-contact/enrich-phone/save",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contactId: contact.id,
+            phone: phoneConflict.incoming,
+          }),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setPhoneError(data.error || "Save failed");
+        return;
+      }
+      setContact({ ...contact, phone: phoneConflict.incoming });
+      setPhoneConflict(null);
+      setPhoneSaved(true);
+    } catch (err) {
+      setPhoneError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setPhoneEnriching(false);
     }
   }
 
@@ -489,6 +623,73 @@ export default function MarketingContactPage() {
                   Replace existing
                 </button>
               </div>
+            )}
+            {(contact.phone || contact.linkedinUrl) && (
+              <>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span>Phone:</span>
+                  {contact.phone ? (
+                    <a
+                      href={`tel:${contact.phone}`}
+                      className="text-blue-600 hover:text-blue-800"
+                    >
+                      {contact.phone}
+                    </a>
+                  ) : (
+                    <span className="text-gray-400">—</span>
+                  )}
+                  {contact.linkedinUrl && (
+                    <button
+                      type="button"
+                      onClick={handleEnrichPhone}
+                      disabled={phoneEnriching}
+                      className={
+                        contact.phone
+                          ? "text-xs text-gray-500 underline hover:text-gray-700 disabled:opacity-50"
+                          : "rounded border border-blue-600 px-2 py-0.5 text-xs text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                      }
+                    >
+                      {phoneEnriching
+                        ? "Looking up…"
+                        : contact.phone
+                          ? "Re-enrich"
+                          : "Find phone (FullEnrich)"}
+                    </button>
+                  )}
+                </div>
+                {phoneSaved && (
+                  <p className="text-xs text-green-600">Saved to Ortto ✓</p>
+                )}
+                {phoneNotFound && (
+                  <p className="text-xs text-gray-400">No phone number found.</p>
+                )}
+                {phoneError && (
+                  <p className="text-xs text-red-600">{phoneError}</p>
+                )}
+                {phoneConflict && (
+                  <div className="mt-1 rounded border border-amber-300 bg-amber-50 p-2 text-xs">
+                    <p className="font-semibold text-amber-900">
+                      Different phone number returned:
+                    </p>
+                    <p className="mt-1">
+                      <span className="text-amber-700">Existing:</span>{" "}
+                      {phoneConflict.existing}
+                    </p>
+                    <p>
+                      <span className="text-amber-700">New:</span>{" "}
+                      {phoneConflict.incoming}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleReplacePhone}
+                      disabled={phoneEnriching}
+                      className="mt-2 rounded bg-amber-600 px-2 py-1 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                    >
+                      Replace existing
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
           <p className="mt-2 text-sm text-gray-400">

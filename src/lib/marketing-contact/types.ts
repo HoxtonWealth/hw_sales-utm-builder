@@ -7,6 +7,7 @@ export interface Contact {
   lastName: string;
   hxtId: string;
   linkedinUrl: string;
+  phone: string;
 }
 
 export interface Activity {

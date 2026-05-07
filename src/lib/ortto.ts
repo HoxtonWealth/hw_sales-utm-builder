@@ -252,16 +252,28 @@ export function parseKeywords(raw: string | undefined): string[] {
 // Uses the same orttoPost (region from ORTTO_BASE_URL, key from ORTTO_API_KEY).
 // ---------------------------------------------------------------------------
 
-type RawContact = { id: string; fields: Record<string, string> };
+type RawContact = { id: string; fields: Record<string, unknown> };
+
+function readStringField(fields: Record<string, unknown>, key: string): string {
+  const v = fields[key];
+  if (typeof v === "string") return v;
+  // Phone fields can come back as objects like { phone: "+44...", country: "GB" }.
+  if (v && typeof v === "object" && "phone" in v) {
+    const p = (v as { phone?: unknown }).phone;
+    if (typeof p === "string") return p;
+  }
+  return "";
+}
 
 function parseContact(raw: RawContact): Contact {
   return {
     id: raw.id,
-    email: raw.fields["str::email"] || "",
-    firstName: raw.fields["str::first"] || "",
-    lastName: raw.fields["str::last"] || "",
-    hxtId: raw.fields["str:cm:hxt-id"] || "",
-    linkedinUrl: raw.fields["str:cm:linkedin-url"] || "",
+    email: readStringField(raw.fields, "str::email"),
+    firstName: readStringField(raw.fields, "str::first"),
+    lastName: readStringField(raw.fields, "str::last"),
+    hxtId: readStringField(raw.fields, "str:cm:hxt-id"),
+    linkedinUrl: readStringField(raw.fields, "str:cm:linkedin-url"),
+    phone: readStringField(raw.fields, "phn::phone"),
   };
 }
 
@@ -275,6 +287,26 @@ export async function updateContactLinkedIn(
         fields: {
           "str::person_id": contactId,
           "str:cm:linkedin-url": linkedinUrl,
+        },
+      },
+    ],
+    merge_by: ["str::person_id"],
+    merge_strategy: 2,
+    find_strategy: 1,
+    async: false,
+  });
+}
+
+export async function updateContactPhone(
+  contactId: string,
+  phone: string
+): Promise<void> {
+  await orttoPost("/v1/person/merge", {
+    people: [
+      {
+        fields: {
+          "str::person_id": contactId,
+          "phn::phone": phone,
         },
       },
     ],
