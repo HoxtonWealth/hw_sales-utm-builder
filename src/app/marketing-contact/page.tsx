@@ -14,6 +14,48 @@ import {
   ACTIVITY_GROUPS,
 } from "@/lib/marketing-contact/constants";
 
+const ENRICHMENT_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+function readEnrichmentCache(key: string): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as {
+      enrichmentId: string;
+      startedAt: number;
+    };
+    if (Date.now() - parsed.startedAt > ENRICHMENT_CACHE_TTL_MS) {
+      window.localStorage.removeItem(key);
+      return null;
+    }
+    return parsed.enrichmentId;
+  } catch {
+    return null;
+  }
+}
+
+function writeEnrichmentCache(key: string, enrichmentId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      key,
+      JSON.stringify({ enrichmentId, startedAt: Date.now() })
+    );
+  } catch {
+    // ignore quota errors
+  }
+}
+
+function clearEnrichmentCache(key: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // ignore
+  }
+}
+
 export default function MarketingContactPage() {
   const [query, setQuery] = useState("");
   const [contact, setContact] = useState<Contact | null>(null);
@@ -145,21 +187,30 @@ export default function MarketingContactPage() {
     setEnrichError("");
     setEnrichConflict(null);
 
+    const cacheKey = `linkedin-enrich:${contact.email}`;
+
     try {
-      const startRes = await fetch(
-        "/api/marketing-contact/enrich-linkedin/start",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: contact.email }),
+      // Resume an in-flight job from a prior click if one exists,
+      // so we don't burn a fresh FullEnrich credit on retry.
+      let enrichmentId = readEnrichmentCache(cacheKey);
+
+      if (!enrichmentId) {
+        const startRes = await fetch(
+          "/api/marketing-contact/enrich-linkedin/start",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: contact.email }),
+          }
+        );
+        const startData = await startRes.json();
+        if (!startRes.ok) {
+          setEnrichError(startData.error || "Failed to start lookup");
+          return;
         }
-      );
-      const startData = await startRes.json();
-      if (!startRes.ok) {
-        setEnrichError(startData.error || "Failed to start lookup");
-        return;
+        enrichmentId = startData.enrichmentId as string;
+        writeEnrichmentCache(cacheKey, enrichmentId);
       }
-      const enrichmentId: string = startData.enrichmentId;
 
       const existingUrl = contact.linkedinUrl || "";
       const params = new URLSearchParams({
@@ -167,7 +218,13 @@ export default function MarketingContactPage() {
         existingUrl,
       });
 
-      for (let attempt = 0; attempt < 15; attempt++) {
+      const TERMINAL_FAIL = new Set([
+        "CANCELED",
+        "CREDITS_INSUFFICIENT",
+        "RATE_LIMIT",
+      ]);
+
+      for (let attempt = 0; attempt < 30; attempt++) {
         await new Promise((r) => setTimeout(r, 2000));
         const pollRes = await fetch(
           `/api/marketing-contact/enrich-linkedin/${enrichmentId}?${params.toString()}`
@@ -178,7 +235,14 @@ export default function MarketingContactPage() {
           return;
         }
 
+        if (TERMINAL_FAIL.has(pollData.status)) {
+          clearEnrichmentCache(cacheKey);
+          setEnrichError(`Lookup ended: ${pollData.status}`);
+          return;
+        }
+
         if (pollData.status === "FINISHED") {
+          clearEnrichmentCache(cacheKey);
           if (!pollData.linkedinUrl) {
             setEnrichNotFound(true);
             return;
@@ -196,7 +260,9 @@ export default function MarketingContactPage() {
         }
       }
 
-      setEnrichError("Still running — try again in a minute.");
+      setEnrichError(
+        "Still running — click Find LinkedIn again to resume; we'll pick up the same lookup."
+      );
     } catch (err) {
       setEnrichError(err instanceof Error ? err.message : "Lookup failed");
     } finally {
