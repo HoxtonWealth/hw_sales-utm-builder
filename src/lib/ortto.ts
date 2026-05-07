@@ -273,12 +273,15 @@ export async function updateContactLinkedIn(
     people: [
       {
         fields: {
-          id: contactId,
+          "str::person_id": contactId,
           "str:cm:linkedin-url": linkedinUrl,
         },
       },
     ],
-    merge_by: ["id"],
+    merge_by: ["str::person_id"],
+    merge_strategy: 2,
+    find_strategy: 1,
+    async: false,
   });
 }
 
