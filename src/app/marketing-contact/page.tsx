@@ -224,7 +224,7 @@ export default function MarketingContactPage() {
         "RATE_LIMIT",
       ]);
 
-      for (let attempt = 0; attempt < 30; attempt++) {
+      for (let attempt = 0; attempt < 90; attempt++) {
         await new Promise((r) => setTimeout(r, 2000));
         const pollRes = await fetch(
           `/api/marketing-contact/enrich-linkedin/${enrichmentId}?${params.toString()}`
@@ -261,7 +261,7 @@ export default function MarketingContactPage() {
       }
 
       setEnrichError(
-        "Still running — click Find LinkedIn again to resume; we'll pick up the same lookup."
+        "Still running after 3 minutes — try again later; we'll pick up the same lookup."
       );
     } catch (err) {
       setEnrichError(err instanceof Error ? err.message : "Lookup failed");
