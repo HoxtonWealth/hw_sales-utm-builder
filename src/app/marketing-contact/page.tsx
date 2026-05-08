@@ -381,6 +381,12 @@ export default function MarketingContactPage() {
             setPhoneNotFound(true);
             return;
           }
+          if (pollData.quotaExceeded) {
+            setPhoneError(
+              "Daily limit reached (3 phone enrichments per day). Try again tomorrow."
+            );
+            return;
+          }
           if (pollData.conflictsWithExisting) {
             setPhoneConflict({
               existing: existingPhone,
