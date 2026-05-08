@@ -91,5 +91,18 @@ export const CONTACT_FIELDS = [
   "str:cm:hxt-id",
   "str:cm:linkedin-url",
   "phn::phone",
+  "pho::pn",
+  "str::ph",
+  "str::mp",
   "c",
+];
+
+// Field ids checked when reading a contact's primary phone. Ortto returns
+// phone under different keys depending on how the field was created on the
+// account, so we try them in order and use the first non-empty value.
+export const PHONE_FIELD_CANDIDATES = [
+  "phn::phone",
+  "pho::pn",
+  "str::ph",
+  "str::mp",
 ];
