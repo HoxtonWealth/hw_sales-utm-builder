@@ -11,7 +11,6 @@
 import {
   CONTACT_FIELDS,
   ACTIVITY_IDS,
-  PHONE_FIELD_CANDIDATES,
 } from "./marketing-contact/constants";
 import type { Contact, Activity } from "./marketing-contact/types";
 
@@ -268,24 +267,7 @@ function readStringField(fields: Record<string, unknown>, key: string): string {
   return "";
 }
 
-function readPhone(fields: Record<string, unknown>): string {
-  for (const key of PHONE_FIELD_CANDIDATES) {
-    const val = readStringField(fields, key);
-    if (val) return val;
-  }
-  return "";
-}
-
 function parseContact(raw: RawContact): Contact {
-  // Diagnostic: surface the field id keys Ortto actually returned so we can
-  // tell which phone key this account uses. Log only the keys, not values.
-  console.log(
-    JSON.stringify({
-      tag: "ortto.parseContact",
-      contactId: raw.id,
-      fieldKeys: Object.keys(raw.fields || {}),
-    })
-  );
   return {
     id: raw.id,
     email: readStringField(raw.fields, "str::email"),
@@ -293,7 +275,7 @@ function parseContact(raw: RawContact): Contact {
     lastName: readStringField(raw.fields, "str::last"),
     hxtId: readStringField(raw.fields, "str:cm:hxt-id"),
     linkedinUrl: readStringField(raw.fields, "str:cm:linkedin-url"),
-    phone: readPhone(raw.fields),
+    phone: readStringField(raw.fields, "phn::phone"),
   };
 }
 

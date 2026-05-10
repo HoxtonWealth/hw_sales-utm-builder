@@ -41,6 +41,12 @@ src/
       admin/assets/route.ts               # GET/POST/PUT/DELETE assets (admin auth, id-in-body for PUT/DELETE)
       marketing-contact/lookup/route.ts   # POST - resolve email/HXT/Ortto ID to contact (Clerk-protected)
       marketing-contact/activities/route.ts  # POST - paginated activities for a contact (Clerk-protected)
+      marketing-contact/enrich-linkedin/start/route.ts  # POST - kick off FullEnrich reverse-email lookup
+      marketing-contact/enrich-linkedin/[id]/route.ts   # GET  - poll FullEnrich, auto-save to Ortto when no conflict
+      marketing-contact/enrich-linkedin/save/route.ts   # POST - explicit save (used by Replace existing button)
+      marketing-contact/enrich-phone/start/route.ts     # POST - kick off FullEnrich enrich-by-LinkedIn (quota-checked)
+      marketing-contact/enrich-phone/[id]/route.ts      # GET  - poll, atomically consume quota, save to phn::phone
+      marketing-contact/enrich-phone/save/route.ts      # POST - explicit save (Replace existing), also quota-gated
 scripts/
   seed.ts                  # Seeds 196 reps into KV (run with `npm run seed`)
   migrations/              # Manual SQL migrations to run in Supabase dashboard
@@ -64,8 +70,8 @@ scripts/
 | `CRON_SECRET` | Set manually; gates all `/api/cron/*` routes (passed as `?secret=`) |
 | `FIRECRAWL_API_KEY` | Set manually; for Coveragebook scrape via Firecrawl |
 | `COVERAGEBOOK_SHARE_URL` | Set manually; the Coveragebook share-link URL Firecrawl scrapes |
-| `FULLENRICH_API_KEY` | Set manually; for LinkedIn reverse-email lookup on `/marketing-contact` |
-| `FULLENRICH_API_BASE` | Optional override; defaults to `https://app.fullenrich.com/api/v1` |
+| `FULLENRICH_API_KEY` | Set manually; for LinkedIn (v1 reverse-email) and phone (v2 contact-enrich) lookups on `/marketing-contact` |
+| `FULLENRICH_API_BASE` | Optional override for the v1 base; defaults to `https://app.fullenrich.com/api/v1`. v2 base is hard-coded. |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key (Marketing Contact only) |
 | `CLERK_SECRET_KEY` | Clerk secret key (Marketing Contact only) |
 | `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | `/marketing-contact/sign-in` |
@@ -101,3 +107,7 @@ scripts/
 - Asset Hub stores **only URLs** to PDFs hosted elsewhere (e.g. datocms). No file uploads. The `assets` table must be created via `scripts/migrations/003_assets.sql` before deploy.
 - Asset Hub admin CRUD lives at `/admin/assets`; public browse at `/asset-hub` (linked from the global Nav).
 - **Marketing Contact** (`/marketing-contact`) is Clerk-gated. The Clerk middleware in `src/middleware.ts` is intentionally scoped to `/marketing-contact/:path*` and `/api/marketing-contact/:path*` — so `/admin`, the other hubs, and all `/api/cron/*` routes are unaffected. `<ClerkProvider>` lives only in `src/app/marketing-contact/layout.tsx`. Sign-up allowlist is managed in the Clerk Dashboard.
+- **LinkedIn enrichment** on the contact card calls FullEnrich's v1 reverse-email-lookup with the contact's email and writes the result to Ortto's `str:cm:linkedin-url`. Browser polls for up to 3 minutes; the FullEnrich `enrichmentId` is cached in `localStorage` (key `linkedin-enrich:<email>`, 24h TTL) so retries resume the same job instead of starting a new one (and burning another credit). **No daily quota.**
+- **Phone enrichment** is gated on the contact already having a LinkedIn URL. Calls FullEnrich's v2 contact-enrich with `linkedin_url` + `enrich_fields: ["contact.phones"]`, normalises the result to E.164-ish form, and writes to Ortto's `phn::phone`. Same 3-minute polling and `localStorage` resume pattern (key `phone-enrich:<contactId>`).
+- **Phone enrichment quota**: each Clerk user gets `PHONE_ENRICH_DAILY_LIMIT` (currently 3) successful Ortto saves per UTC calendar day. Counter lives in Vercel KV (`phone-enrich-quota:<userId>:<YYYY-MM-DD>`, 48h TTL). Atomic `INCR` with rollback on Ortto failure; refused at the start route to avoid burning a FullEnrich credit when over cap. Limit constant: `src/lib/marketing-contact/quota.ts`.
+- **Ortto person/merge shape** for both writes: place the merge key inside `fields`, e.g. `{ people: [{ fields: { "str::person_id": "<id>", "str:cm:linkedin-url": "..." } }], merge_by: ["str::person_id"], merge_strategy: 2, find_strategy: 1, async: false }`. The endpoint will silently mistype top-level `id` as a date field and return a 400 if you nest it wrong.
