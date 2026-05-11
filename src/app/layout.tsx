@@ -16,8 +16,8 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "UTM Builder",
-  description: "Generate tracked UTM links for sales outreach",
+  title: "Marketing resources",
+  description: "One stop shop for all marketing resources",
 };
 
 export default function RootLayout({
