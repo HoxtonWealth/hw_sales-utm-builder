@@ -125,6 +125,17 @@ export default function MarketingContactPage() {
     [filteredActivities]
   );
 
+  const localTzAbbr = useMemo(() => {
+    try {
+      const parts = new Intl.DateTimeFormat(undefined, {
+        timeZoneName: "short",
+      }).formatToParts(new Date());
+      return parts.find((p) => p.type === "timeZoneName")?.value ?? "";
+    } catch {
+      return "";
+    }
+  }, []);
+
   useEffect(() => {
     setExpandedDates(new Set(filteredGroups.map((g) => g.date)));
   }, [filteredGroups]);
@@ -787,6 +798,7 @@ export default function MarketingContactPage() {
                 <p className="text-sm font-medium text-amber-900">
                   {bestTime.overall.bestDay}s around{" "}
                   {formatHour(bestTime.overall.bestHour)}
+                  {localTzAbbr ? ` ${localTzAbbr}` : ""}
                 </p>
                 <p className="text-xs text-amber-500">
                   Based on {bestTime.overall.activityCount} activities
@@ -801,6 +813,7 @@ export default function MarketingContactPage() {
                 <p className="text-sm font-medium text-amber-900">
                   {bestTime.email.bestDay}s around{" "}
                   {formatHour(bestTime.email.bestHour)}
+                  {localTzAbbr ? ` ${localTzAbbr}` : ""}
                 </p>
                 <p className="text-xs text-amber-500">
                   Based on {bestTime.email.activityCount} email activities
@@ -869,7 +882,14 @@ export default function MarketingContactPage() {
                           )}
                         </div>
                         <span className="mt-0.5 whitespace-nowrap text-xs text-gray-400">
-                          {new Date(activity.created_at).toLocaleTimeString()}
+                          {new Date(activity.created_at).toLocaleTimeString(
+                            [],
+                            {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              timeZoneName: "short",
+                            }
+                          )}
                         </span>
                       </div>
                     );
