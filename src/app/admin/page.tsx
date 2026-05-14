@@ -187,6 +187,12 @@ export default function AdminPage() {
           <h1 className="text-2xl font-semibold text-gray-900">Admin settings</h1>
           <div className="flex items-center gap-4">
             <Link
+              href="/admin/reports"
+              className="text-sm text-blue-600 hover:text-blue-800"
+            >
+              Reports →
+            </Link>
+            <Link
               href="/admin/assets"
               className="text-sm text-blue-600 hover:text-blue-800"
             >

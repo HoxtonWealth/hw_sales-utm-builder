@@ -1,13 +1,15 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { UserButton } from "@clerk/nextjs";
+import { UserButton, useUser } from "@clerk/nextjs";
+import posthog from "posthog-js";
 import type { Contact, Activity, DateGroup } from "@/lib/marketing-contact/types";
 import {
   groupByDate,
   getActivityColor,
   getBestContactTime,
   formatHour,
+  detectInputType,
 } from "@/lib/marketing-contact/utils";
 import {
   ACTIVITY_IDS,
@@ -57,6 +59,9 @@ function clearEnrichmentCache(key: string): void {
 }
 
 export default function MarketingContactPage() {
+  const { user } = useUser();
+  const repEmail = user?.primaryEmailAddress?.emailAddress ?? null;
+
   const [query, setQuery] = useState("");
   const [contact, setContact] = useState<Contact | null>(null);
   const [allActivities, setAllActivities] = useState<Activity[]>([]);
@@ -162,15 +167,24 @@ export default function MarketingContactPage() {
     setPhoneError("");
     setPhoneConflict(null);
 
+    const trimmedQuery = query.trim();
+    const queryKind = detectInputType(trimmedQuery);
+
     try {
       const lookupRes = await fetch("/api/marketing-contact/lookup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: query.trim() }),
+        body: JSON.stringify({ query: trimmedQuery }),
       });
       const lookupData = await lookupRes.json();
       if (!lookupRes.ok) {
         setError(lookupData.error || "Contact not found");
+        posthog.capture("contact_looked_up", {
+          source_page: "marketing-contact",
+          rep_email: repEmail,
+          query_kind: queryKind,
+          result: lookupRes.status === 404 ? "not_found" : "error",
+        });
         return;
       }
       setContact(lookupData.contact);
@@ -188,6 +202,13 @@ export default function MarketingContactPage() {
         const actData = await actRes.json();
         if (!actRes.ok) {
           setError(actData.error || "Failed to fetch activities");
+          posthog.capture("contact_looked_up", {
+            source_page: "marketing-contact",
+            rep_email: repEmail,
+            query_kind: queryKind,
+            result: "activities_failed",
+            hxt_id: lookupData.contact.hxtId || null,
+          });
           return;
         }
         fetched = [...fetched, ...actData.activities];
@@ -197,8 +218,22 @@ export default function MarketingContactPage() {
       }
 
       setAllActivities(fetched);
+      posthog.capture("contact_looked_up", {
+        source_page: "marketing-contact",
+        rep_email: repEmail,
+        query_kind: queryKind,
+        result: "found",
+        hxt_id: lookupData.contact.hxtId || null,
+        activity_count: fetched.length,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
+      posthog.capture("contact_looked_up", {
+        source_page: "marketing-contact",
+        rep_email: repEmail,
+        query_kind: queryKind,
+        result: "error",
+      });
     } finally {
       setLoading(false);
     }
@@ -213,11 +248,34 @@ export default function MarketingContactPage() {
     setEnrichConflict(null);
 
     const cacheKey = `linkedin-enrich:${contact.email}`;
+    const enrichBase = {
+      source_page: "marketing-contact",
+      rep_email: repEmail,
+      kind: "linkedin" as const,
+      hxt_id: contact.hxtId || null,
+    };
+    const captureCompleted = (
+      outcome: string,
+      saved = false,
+      extras: Record<string, unknown> = {}
+    ) =>
+      posthog.capture("enrichment_completed", {
+        ...enrichBase,
+        outcome,
+        saved,
+        ...extras,
+      });
 
     try {
       // Resume an in-flight job from a prior click if one exists,
       // so we don't burn a fresh FullEnrich credit on retry.
       let enrichmentId = readEnrichmentCache(cacheKey);
+      const resumedFromCache = Boolean(enrichmentId);
+
+      posthog.capture("enrichment_started", {
+        ...enrichBase,
+        resumed_from_cache: resumedFromCache,
+      });
 
       if (!enrichmentId) {
         const startRes = await fetch(
@@ -231,6 +289,7 @@ export default function MarketingContactPage() {
         const startData = await startRes.json();
         if (!startRes.ok) {
           setEnrichError(startData.error || "Failed to start lookup");
+          captureCompleted("start_failed");
           return;
         }
         enrichmentId = startData.enrichmentId as string;
@@ -257,12 +316,14 @@ export default function MarketingContactPage() {
         const pollData = await pollRes.json();
         if (!pollRes.ok) {
           setEnrichError(pollData.error || "Lookup failed");
+          captureCompleted("poll_failed");
           return;
         }
 
         if (TERMINAL_FAIL.has(pollData.status)) {
           clearEnrichmentCache(cacheKey);
           setEnrichError(`Lookup ended: ${pollData.status}`);
+          captureCompleted(String(pollData.status).toLowerCase());
           return;
         }
 
@@ -270,6 +331,7 @@ export default function MarketingContactPage() {
           clearEnrichmentCache(cacheKey);
           if (!pollData.linkedinUrl) {
             setEnrichNotFound(true);
+            captureCompleted("not_found");
             return;
           }
           if (pollData.conflictsWithExisting) {
@@ -277,10 +339,12 @@ export default function MarketingContactPage() {
               existing: existingUrl,
               incoming: pollData.linkedinUrl,
             });
+            captureCompleted("conflict");
             return;
           }
           setContact({ ...contact, linkedinUrl: pollData.linkedinUrl });
           if (pollData.saved) setEnrichSaved(true);
+          captureCompleted("found", Boolean(pollData.saved));
           return;
         }
       }
@@ -288,8 +352,10 @@ export default function MarketingContactPage() {
       setEnrichError(
         "Still running after 3 minutes — try again later; we'll pick up the same lookup."
       );
+      captureCompleted("timeout");
     } catch (err) {
       setEnrichError(err instanceof Error ? err.message : "Lookup failed");
+      captureCompleted("error");
     } finally {
       setEnriching(false);
     }
@@ -319,6 +385,13 @@ export default function MarketingContactPage() {
       setContact({ ...contact, linkedinUrl: enrichConflict.incoming });
       setEnrichConflict(null);
       setEnrichSaved(true);
+      posthog.capture("enrichment_conflict_resolved", {
+        source_page: "marketing-contact",
+        rep_email: repEmail,
+        kind: "linkedin",
+        hxt_id: contact.hxtId || null,
+        action: "replaced",
+      });
     } catch (err) {
       setEnrichError(err instanceof Error ? err.message : "Save failed");
     } finally {
@@ -335,9 +408,32 @@ export default function MarketingContactPage() {
     setPhoneConflict(null);
 
     const cacheKey = `phone-enrich:${contact.id}`;
+    const enrichBase = {
+      source_page: "marketing-contact",
+      rep_email: repEmail,
+      kind: "phone" as const,
+      hxt_id: contact.hxtId || null,
+    };
+    const captureCompleted = (
+      outcome: string,
+      saved = false,
+      extras: Record<string, unknown> = {}
+    ) =>
+      posthog.capture("enrichment_completed", {
+        ...enrichBase,
+        outcome,
+        saved,
+        ...extras,
+      });
 
     try {
       let enrichmentId = readEnrichmentCache(cacheKey);
+      const resumedFromCache = Boolean(enrichmentId);
+
+      posthog.capture("enrichment_started", {
+        ...enrichBase,
+        resumed_from_cache: resumedFromCache,
+      });
 
       if (!enrichmentId) {
         const startRes = await fetch(
@@ -351,6 +447,16 @@ export default function MarketingContactPage() {
         const startData = await startRes.json();
         if (!startRes.ok) {
           setPhoneError(startData.error || "Failed to start lookup");
+          if (startData.quotaExceeded) {
+            posthog.capture("enrichment_quota_blocked", {
+              ...enrichBase,
+              limit: startData.quota?.limit ?? null,
+              remaining: startData.quota?.remaining ?? null,
+            });
+            captureCompleted("quota_exceeded");
+          } else {
+            captureCompleted("start_failed");
+          }
           return;
         }
         enrichmentId = startData.enrichmentId as string;
@@ -377,12 +483,14 @@ export default function MarketingContactPage() {
         const pollData = await pollRes.json();
         if (!pollRes.ok) {
           setPhoneError(pollData.error || "Lookup failed");
+          captureCompleted("poll_failed");
           return;
         }
 
         if (TERMINAL_FAIL.has(pollData.status)) {
           clearEnrichmentCache(cacheKey);
           setPhoneError(`Lookup ended: ${pollData.status}`);
+          captureCompleted(String(pollData.status).toLowerCase());
           return;
         }
 
@@ -390,12 +498,19 @@ export default function MarketingContactPage() {
           clearEnrichmentCache(cacheKey);
           if (!pollData.phone) {
             setPhoneNotFound(true);
+            captureCompleted("not_found");
             return;
           }
           if (pollData.quotaExceeded) {
             setPhoneError(
               "Daily limit reached (3 phone enrichments per day). Try again tomorrow."
             );
+            posthog.capture("enrichment_quota_blocked", {
+              ...enrichBase,
+              limit: pollData.quota?.limit ?? null,
+              remaining: pollData.quota?.remaining ?? null,
+            });
+            captureCompleted("quota_exceeded");
             return;
           }
           if (pollData.conflictsWithExisting) {
@@ -403,10 +518,12 @@ export default function MarketingContactPage() {
               existing: existingPhone,
               incoming: pollData.phone,
             });
+            captureCompleted("conflict");
             return;
           }
           setContact({ ...contact, phone: pollData.phone });
           if (pollData.saved) setPhoneSaved(true);
+          captureCompleted("found", Boolean(pollData.saved));
           return;
         }
       }
@@ -414,8 +531,10 @@ export default function MarketingContactPage() {
       setPhoneError(
         "Still running after 3 minutes — try again later; we'll pick up the same lookup."
       );
+      captureCompleted("timeout");
     } catch (err) {
       setPhoneError(err instanceof Error ? err.message : "Lookup failed");
+      captureCompleted("error");
     } finally {
       setPhoneEnriching(false);
     }
@@ -445,6 +564,13 @@ export default function MarketingContactPage() {
       setContact({ ...contact, phone: phoneConflict.incoming });
       setPhoneConflict(null);
       setPhoneSaved(true);
+      posthog.capture("enrichment_conflict_resolved", {
+        source_page: "marketing-contact",
+        rep_email: repEmail,
+        kind: "phone",
+        hxt_id: contact.hxtId || null,
+        action: "replaced",
+      });
     } catch (err) {
       setPhoneError(err instanceof Error ? err.message : "Save failed");
     } finally {

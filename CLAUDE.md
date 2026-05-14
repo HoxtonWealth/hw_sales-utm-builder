@@ -76,6 +76,9 @@ scripts/
 | `CLERK_SECRET_KEY` | Clerk secret key (Marketing Contact only) |
 | `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | `/marketing-contact/sign-in` |
 | `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL` | `/marketing-contact` |
+| `POSTHOG_PERSONAL_API_KEY` | PostHog personal API key (scope `query:read`); powers `/admin/reports` HogQL queries |
+| `POSTHOG_PROJECT_ID` | Numeric project id from the PostHog URL; required alongside the personal API key |
+| `POSTHOG_QUERY_HOST` | Optional override for the Query API host; defaults to `https://eu.posthog.com` (not the ingest host) |
 
 ## Key Commands
 
